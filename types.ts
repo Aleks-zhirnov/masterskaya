@@ -39,7 +39,7 @@ export interface SparePart {
   inStock: boolean; // true = in stock, false = to buy
 }
 
-export type ViewState = 'repair' | 'inventory' | 'print' | 'ai_chat';
+export type ViewState = 'repair' | 'inventory' | 'print' | 'ai_chat' | 'references';
 
 export interface ChatMessage {
   role: 'user' | 'model';

@@ -17,7 +17,13 @@ import {
   Database,
   RefreshCw,
   Minus,
-  Tag
+  Tag,
+  BookOpen,
+  Calculator,
+  Table,
+  Zap,
+  Search,
+  Lightbulb
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage } from './types';
 import { generateWorkshopAdvice } from './services/ai';
@@ -39,6 +45,20 @@ const RADIO_SUBCATEGORIES: Record<PartType, string[]> = {
   [PartType.MODULE]: ['DC-DC Понижающие', 'DC-DC Повышающие', 'Зарядка Li-Ion', 'Arduino', 'ESP', 'Датчики'],
   [PartType.OTHER]: ['Провода', 'Термоусадка', 'Припой/Флюс', 'Винты/Гайки', 'Радиаторы', 'Корпуса']
 };
+
+// Данные для таблицы ESR (Максимально допустимое сопротивление в Ом)
+const ESR_DATA = [
+  { cap: '1 uF', v10: '5.0', v16: '4.0', v25: '3.0', v63: '2.0' },
+  { cap: '2.2 uF', v10: '3.5', v16: '3.0', v25: '2.5', v63: '1.5' },
+  { cap: '4.7 uF', v10: '3.0', v16: '2.5', v25: '2.0', v63: '1.0' },
+  { cap: '10 uF', v10: '2.0', v16: '1.5', v25: '1.2', v63: '0.8' },
+  { cap: '22 uF', v10: '1.5', v16: '1.0', v25: '0.8', v63: '0.5' },
+  { cap: '47 uF', v10: '1.0', v16: '0.8', v25: '0.6', v63: '0.3' },
+  { cap: '100 uF', v10: '0.6', v16: '0.4', v25: '0.3', v63: '0.2' },
+  { cap: '220 uF', v10: '0.3', v16: '0.2', v25: '0.15', v63: '0.1' },
+  { cap: '470 uF', v10: '0.15', v16: '0.12', v25: '0.1', v63: '0.08' },
+  { cap: '1000 uF', v10: '0.1', v16: '0.08', v25: '0.06', v63: '0.04' },
+];
 
 // --- SERVICE LAYER FOR DATA ---
 
@@ -133,6 +153,15 @@ const App: React.FC = () => {
   const [newPartType, setNewPartType] = useState<PartType>(PartType.OTHER);
   const [newPartSubtype, setNewPartSubtype] = useState<string>('');
   const [newPartQuantity, setNewPartQuantity] = useState<number>(1);
+
+  // References State
+  const [activeRefTab, setActiveRefTab] = useState<'esr' | 'smd' | 'divider' | 'datasheet'>('esr');
+  const [smdCode, setSmdCode] = useState('');
+  const [dividerValues, setDividerValues] = useState({ vin: 12, r1: 10000, r2: 1000 });
+  const [ledValues, setLedValues] = useState({ vsource: 12, vled: 3, current: 20 });
+  const [datasheetQuery, setDatasheetQuery] = useState('');
+  const [datasheetResult, setDatasheetResult] = useState('');
+  const [isDatasheetLoading, setIsDatasheetLoading] = useState(false);
 
   // AI Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -343,6 +372,64 @@ const App: React.FC = () => {
     setChatMessages(prev => [...prev, { role: 'model', text: responseText }]);
   };
 
+  // --- REFERENCE CALCULATORS ---
+  const calculateSMD = (code: string) => {
+    if (!code) return '---';
+    const cleanCode = code.toUpperCase().trim();
+    
+    // R notation (e.g., 4R7)
+    if (cleanCode.includes('R')) {
+      return `${cleanCode.replace('R', '.')} Ω`;
+    }
+    
+    // 3 or 4 digit notation
+    if (/^\d+$/.test(cleanCode)) {
+      const digits = cleanCode.split('').map(Number);
+      const multiplier = Math.pow(10, digits.pop()!);
+      const base = parseInt(digits.join(''));
+      const val = base * multiplier;
+      
+      if (val >= 1000000) return `${val/1000000} MΩ`;
+      if (val >= 1000) return `${val/1000} kΩ`;
+      return `${val} Ω`;
+    }
+    
+    return 'Некорректный код';
+  };
+
+  const calculateDividerVout = () => {
+    const { vin, r1, r2 } = dividerValues;
+    if (!r1 || !r2) return 0;
+    return (vin * r2 / (r1 + r2)).toFixed(2);
+  };
+
+  const calculateLedResistor = () => {
+    const { vsource, vled, current } = ledValues;
+    if (vsource <= vled || current === 0) return { r: 0, p: 0 };
+    const r = (vsource - vled) / (current / 1000);
+    const p = Math.pow(current / 1000, 2) * r;
+    return { r: Math.ceil(r), p: p.toFixed(2) };
+  };
+
+  const handleDatasheetSearch = async () => {
+    if (!datasheetQuery.trim()) return;
+    setIsDatasheetLoading(true);
+    setDatasheetResult('');
+    
+    const prompt = `ЗАПРОС ДАТАШИТА: Найди информацию по компоненту "${datasheetQuery}". 
+    Дай ответ в формате:
+    1. Тип компонента
+    2. Краткое описание
+    3. Цоколевка (Pinout) - опиши словами (например, 1: GND, 2: VCC)
+    4. Основные характеристики (Макс напряжение, ток и т.д.)
+    5. Популярные аналоги.
+    Отвечай кратко и структурировано.`;
+
+    const result = await generateWorkshopAdvice(prompt);
+    setDatasheetResult(result);
+    setIsDatasheetLoading(false);
+  };
+
   // --- RENDERERS ---
 
   if (!initLoaded) {
@@ -402,6 +489,7 @@ const App: React.FC = () => {
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-slate-900 text-slate-100 flex justify-around items-center p-3 z-50 border-t border-slate-800 pb-safe">
         <MobileNavButton view="repair" current={view} setView={setView} icon={<Clock className="w-6 h-6" />} label="Ремонт" badge={devices.length} />
         <MobileNavButton view="inventory" current={view} setView={setView} icon={<Package className="w-6 h-6" />} label="Склад" />
+        <MobileNavButton view="references" current={view} setView={setView} icon={<BookOpen className="w-6 h-6" />} label="Справка" />
         <MobileNavButton view="print" current={view} setView={setView} icon={<Printer className="w-6 h-6" />} label="Печать" />
         <MobileNavButton view="ai_chat" current={view} setView={setView} icon={<Bot className="w-6 h-6" />} label="AI" />
       </div>
@@ -680,6 +768,216 @@ const App: React.FC = () => {
     );
   };
 
+  const renderReferencesView = () => (
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto">
+      <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+        <BookOpen className="w-8 h-8 text-blue-600" />
+        Справочники и Инструменты
+      </h2>
+
+      {/* Tabs */}
+      <div className="flex overflow-x-auto gap-2 mb-6 pb-2 no-scrollbar">
+        <button onClick={() => setActiveRefTab('esr')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all ${activeRefTab === 'esr' ? 'bg-blue-600 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
+          <Table className="w-4 h-4 inline mr-2" />ESR Таблица
+        </button>
+        <button onClick={() => setActiveRefTab('smd')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all ${activeRefTab === 'smd' ? 'bg-blue-600 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
+          <Calculator className="w-4 h-4 inline mr-2" />SMD Калькулятор
+        </button>
+        <button onClick={() => setActiveRefTab('divider')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all ${activeRefTab === 'divider' ? 'bg-blue-600 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
+          <Zap className="w-4 h-4 inline mr-2" />Делители & LED
+        </button>
+        <button onClick={() => setActiveRefTab('datasheet')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all ${activeRefTab === 'datasheet' ? 'bg-purple-600 text-white shadow' : 'bg-white text-purple-600 hover:bg-purple-50 border border-purple-100'}`}>
+          <Search className="w-4 h-4 inline mr-2" />AI Даташит
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 md:p-6 flex-1 overflow-auto">
+        
+        {/* ESR TABLE CONTENT */}
+        {activeRefTab === 'esr' && (
+          <div>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">Таблица ESR (Эквивалентное последовательное сопротивление)</h3>
+            <p className="text-sm text-slate-500 mb-4">Максимально допустимые значения в Омах. Для Low ESR конденсаторов значения должны быть меньше.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left text-slate-600 border-collapse">
+                <thead className="text-xs text-slate-700 uppercase bg-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 rounded-tl-lg">Емкость</th>
+                    <th className="px-4 py-3">10V</th>
+                    <th className="px-4 py-3">16V</th>
+                    <th className="px-4 py-3">25V</th>
+                    <th className="px-4 py-3 rounded-tr-lg">63V+</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ESR_DATA.map((row, i) => (
+                    <tr key={i} className="bg-white border-b hover:bg-slate-50">
+                      <td className="px-4 py-3 font-bold text-slate-900">{row.cap}</td>
+                      <td className="px-4 py-3">{row.v10} Ω</td>
+                      <td className="px-4 py-3">{row.v16} Ω</td>
+                      <td className="px-4 py-3">{row.v25} Ω</td>
+                      <td className="px-4 py-3">{row.v63} Ω</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 p-4 bg-yellow-50 text-yellow-800 text-sm rounded-lg border border-yellow-200 flex gap-2">
+              <Lightbulb className="w-5 h-5 flex-shrink-0" />
+              <div>
+                <strong>Совет:</strong> Если измеренное ESR больше табличного значения более чем на 20-30%, конденсатор подлежит замене. В импульсных блоках питания используйте только Low ESR серии.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SMD CALCULATOR CONTENT */}
+        {activeRefTab === 'smd' && (
+          <div className="max-w-md mx-auto">
+             <h3 className="text-lg font-bold text-slate-800 mb-4 text-center">Расшифровка SMD резисторов</h3>
+             <div className="bg-slate-100 p-8 rounded-xl mb-6 flex flex-col items-center">
+                <input 
+                  type="text" 
+                  maxLength={4}
+                  placeholder="Код (напр. 103, 4R7)" 
+                  className="text-4xl font-mono text-center uppercase w-full max-w-[200px] p-2 border-b-2 border-slate-400 bg-transparent outline-none placeholder:text-slate-300"
+                  value={smdCode}
+                  onChange={(e) => setSmdCode(e.target.value)}
+                />
+                <div className="mt-6 text-xl font-bold text-blue-600 h-8">
+                  {smdCode ? calculateSMD(smdCode) : 'Введите код'}
+                </div>
+             </div>
+             <div className="space-y-2 text-sm text-slate-500">
+               <p><strong>3 цифры:</strong> Первые две - значение, третья - множитель (степень 10).</p>
+               <p><em>Пример: 103 = 10 * 10^3 = 10 000 Ом = 10 кОм</em></p>
+               <p><strong>4 цифры:</strong> Первые три - значение, четвертая - множитель.</p>
+               <p><strong>Буква R:</strong> Обозначает десятичную запятую.</p>
+               <p><em>Пример: 4R7 = 4.7 Ом</em></p>
+             </div>
+          </div>
+        )}
+
+        {/* DIVIDER & LED CONTENT */}
+        {activeRefTab === 'divider' && (
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Voltage Divider */}
+            <div>
+              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-yellow-500" /> Делитель напряжения
+              </h3>
+              <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">V in (Вольт)</label>
+                  <input type="number" className="w-full p-2 border rounded" value={dividerValues.vin} onChange={e => setDividerValues({...dividerValues, vin: parseFloat(e.target.value) || 0})} />
+                </div>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">R1 (Ом)</label>
+                    <input type="number" className="w-full p-2 border rounded" value={dividerValues.r1} onChange={e => setDividerValues({...dividerValues, r1: parseFloat(e.target.value) || 0})} />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">R2 (Ом)</label>
+                    <input type="number" className="w-full p-2 border rounded" value={dividerValues.r2} onChange={e => setDividerValues({...dividerValues, r2: parseFloat(e.target.value) || 0})} />
+                  </div>
+                </div>
+                <div className="mt-2 pt-4 border-t border-slate-200">
+                  <div className="text-xs text-slate-500 uppercase">V out</div>
+                  <div className="text-3xl font-bold text-slate-800">{calculateDividerVout()} V</div>
+                </div>
+              </div>
+            </div>
+
+            {/* LED Resistor */}
+            <div>
+              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-blue-500" /> Резистор для LED
+              </h3>
+              <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                 <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Напряжение источника (V)</label>
+                  <input type="number" className="w-full p-2 border rounded" value={ledValues.vsource} onChange={e => setLedValues({...ledValues, vsource: parseFloat(e.target.value) || 0})} />
+                </div>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">LED (V)</label>
+                     <input type="number" className="w-full p-2 border rounded" value={ledValues.vled} onChange={e => setLedValues({...ledValues, vled: parseFloat(e.target.value) || 0})} />
+                     <span className="text-[10px] text-slate-400">Красный ~2V, Синий ~3V</span>
+                  </div>
+                  <div className="flex-1">
+                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ток (mA)</label>
+                     <input type="number" className="w-full p-2 border rounded" value={ledValues.current} onChange={e => setLedValues({...ledValues, current: parseFloat(e.target.value) || 0})} />
+                  </div>
+                </div>
+                <div className="mt-2 pt-4 border-t border-slate-200 flex justify-between items-end">
+                   <div>
+                      <div className="text-xs text-slate-500 uppercase">Резистор</div>
+                      <div className="text-3xl font-bold text-slate-800">{calculateLedResistor().r} Ω</div>
+                   </div>
+                   <div className="text-right">
+                      <div className="text-xs text-slate-500 uppercase">Мощность</div>
+                      <div className="text-xl font-bold text-slate-600">{calculateLedResistor().p} W</div>
+                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DATASHEET SEARCH */}
+        {activeRefTab === 'datasheet' && (
+          <div className="flex flex-col h-full">
+            <div className="text-center mb-6">
+              <div className="inline-block p-3 bg-purple-100 rounded-full mb-2">
+                <Search className="w-8 h-8 text-purple-600" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800">Умный поиск Datasheet</h3>
+              <p className="text-slate-500">Введите маркировку (напр. NE555, IRF3205, 78L05)</p>
+            </div>
+            
+            <div className="flex gap-2 max-w-lg mx-auto w-full mb-6">
+              <input 
+                type="text" 
+                value={datasheetQuery}
+                onChange={(e) => setDatasheetQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleDatasheetSearch()}
+                placeholder="Маркировка компонента..."
+                className="flex-1 p-3 border border-slate-300 rounded-lg outline-none focus:border-purple-500 shadow-sm"
+              />
+              <button 
+                onClick={handleDatasheetSearch}
+                disabled={isDatasheetLoading || !datasheetQuery}
+                className="bg-purple-600 text-white px-6 rounded-lg font-bold hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              >
+                {isDatasheetLoading ? <RefreshCw className="w-5 h-5 animate-spin"/> : 'Найти'}
+              </button>
+            </div>
+
+            <div className="flex-1 bg-slate-50 rounded-xl border border-slate-200 p-4 overflow-auto">
+               {datasheetResult ? (
+                 <div className="prose prose-sm max-w-none text-slate-800 whitespace-pre-line">
+                   {datasheetResult}
+                 </div>
+               ) : (
+                 <div className="text-center text-slate-400 mt-10">
+                   Результат поиска появится здесь.<br/>
+                   AI найдет характеристики и цоколевку.
+                 </div>
+               )}
+            </div>
+
+            <div className="mt-4 text-xs text-slate-400 text-center">
+              Полезные ресурсы: 
+              <a href="https://www.alldatasheet.com" target="_blank" className="text-blue-500 hover:underline ml-1">AllDatasheet</a>,
+              <a href="https://pinout.xyz" target="_blank" className="text-blue-500 hover:underline ml-1">Pinout.xyz</a>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+
   const renderAIChat = () => (
     <div className="h-[calc(100vh-80px)] md:h-full flex flex-col bg-slate-50 pb-safe">
       <div className="p-4 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between">
@@ -743,6 +1041,7 @@ const App: React.FC = () => {
       <main className="flex-1 ml-0 md:ml-64 print:ml-0 min-h-screen overflow-auto print:overflow-visible">
         {view === 'repair' && renderRepairView()}
         {view === 'inventory' && renderInventoryView()}
+        {view === 'references' && renderReferencesView()}
         {view === 'print' && <Printables devices={devices.filter(d => d.status !== DeviceStatus.ISSUED)} />}
         {view === 'ai_chat' && renderAIChat()}
       </main>
@@ -767,6 +1066,13 @@ const NavButtons = ({ current, setView, devicesCount }: any) => (
     >
       <Package className="w-5 h-5" />
       <span>Склад</span>
+    </button>
+    <button 
+      onClick={() => setView('references')}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'references' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+    >
+      <BookOpen className="w-5 h-5" />
+      <span>Справочники</span>
     </button>
     <button 
       onClick={() => setView('print')}
