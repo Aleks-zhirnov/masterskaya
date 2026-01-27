@@ -6,68 +6,176 @@ import {
   Bot, 
   Plus, 
   Trash2, 
-  Calendar, 
-  Search, 
-  CheckCircle,
-  AlertCircle,
-  Clock,
+  Clock, 
   ArrowRight,
   ShoppingCart,
-  MoveRight
+  CheckCircle,
+  Menu,
+  X,
+  Cloud,
+  CloudOff,
+  Database
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage } from './types';
 import { generateWorkshopAdvice } from './services/ai';
 import { Printables } from './components/Printables';
 
-// Hook for local storage
-function useLocalStorage<T>(key: string, initialValue: T) {
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    try {
-      const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      console.error(error);
-      return initialValue;
-    }
-  });
+// --- SERVICE LAYER FOR DATA ---
+// This allows switching between LocalStorage and Vercel API seamlessly
 
-  const setValue = (value: T | ((val: T) => T)) => {
+const api = {
+  isCloudAvailable: async () => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
-    } catch (error) {
-      console.error(error);
+      // Try to hit the seed endpoint to check connection/init
+      const res = await fetch('/api/seed'); 
+      return res.ok;
+    } catch (e) {
+      return false;
     }
-  };
-  return [storedValue, setValue] as const;
-}
+  },
+  
+  getDevices: async () => {
+    const res = await fetch('/api/devices');
+    if (!res.ok) throw new Error('Failed to fetch');
+    return res.json();
+  },
+  saveDevice: async (device: Device) => {
+    await fetch('/api/devices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(device)
+    });
+  },
+  deleteDevice: async (id: string) => {
+    await fetch(`/api/devices?id=${id}`, { method: 'DELETE' });
+  },
+
+  getParts: async () => {
+    const res = await fetch('/api/parts');
+    if (!res.ok) throw new Error('Failed to fetch');
+    return res.json();
+  },
+  savePart: async (part: SparePart) => {
+    await fetch('/api/parts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(part)
+    });
+  },
+  deletePart: async (id: string) => {
+    await fetch(`/api/parts?id=${id}`, { method: 'DELETE' });
+  }
+};
 
 const App: React.FC = () => {
   // --- STATE ---
   const [view, setView] = useState<ViewState>('repair');
   
-  // Devices State
-  const [devices, setDevices] = useLocalStorage<Device[]>('workshop_devices', []);
+  // Storage Mode
+  const [storageMode, setStorageMode] = useState<'local' | 'cloud'>('local');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [initLoaded, setInitLoaded] = useState(false);
+
+  // Data State
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [parts, setParts] = useState<SparePart[]>([]);
+
+  // UI State
   const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
   const [newDevice, setNewDevice] = useState<Partial<Device>>({ status: DeviceStatus.RECEIVED });
-  
-  // Inventory State
-  const [parts, setParts] = useLocalStorage<SparePart[]>('workshop_parts', []);
   const [inventoryTab, setInventoryTab] = useState<'stock' | 'buy'>('stock');
   const [newPartName, setNewPartName] = useState('');
   const [newPartType, setNewPartType] = useState<PartType>(PartType.OTHER);
 
   // AI Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: 'Привет! Я ваш AI-помощник по мастерской. Чем могу помочь? (Например: "Какой аналог у транзистора KT315?" или "Составь чек-лист диагностики БП")' }
+    { role: 'model', text: 'Привет! Я ваш AI-помощник. Спросите про аналоги или диагностику.' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
 
-  // --- HELPERS ---
+  // --- INITIALIZATION & SYNC ---
 
-  // Sort devices by date (Oldest first)
+  useEffect(() => {
+    const initApp = async () => {
+      // 1. Check if Cloud is available
+      const cloudAvailable = await api.isCloudAvailable();
+      
+      if (cloudAvailable) {
+        setStorageMode('cloud');
+        try {
+          const cloudDevices = await api.getDevices();
+          const cloudParts = await api.getParts();
+          setDevices(cloudDevices);
+          setParts(cloudParts);
+        } catch (e) {
+          console.error("Cloud fetch failed, falling back", e);
+          loadLocal();
+        }
+      } else {
+        loadLocal();
+      }
+      setInitLoaded(true);
+    };
+
+    const loadLocal = () => {
+      setStorageMode('local');
+      const localDevs = localStorage.getItem('workshop_devices');
+      const localParts = localStorage.getItem('workshop_parts');
+      if (localDevs) setDevices(JSON.parse(localDevs));
+      if (localParts) setParts(JSON.parse(localParts));
+    };
+
+    initApp();
+  }, []);
+
+  // --- PERSISTENCE HELPERS ---
+
+  const persistDevice = async (updatedDevices: Device[], changedDevice?: Device, isDelete?: boolean) => {
+    setDevices(updatedDevices);
+    
+    if (storageMode === 'local') {
+      localStorage.setItem('workshop_devices', JSON.stringify(updatedDevices));
+    } else {
+      setIsSyncing(true);
+      try {
+        if (isDelete && changedDevice) {
+          await api.deleteDevice(changedDevice.id);
+        } else if (changedDevice) {
+          await api.saveDevice(changedDevice);
+        }
+      } catch (e) {
+        console.error("Sync error", e);
+        alert("Ошибка синхронизации с облаком. Проверьте соединение.");
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+  };
+
+  const persistPart = async (updatedParts: SparePart[], changedPart?: SparePart, isDelete?: boolean) => {
+    setParts(updatedParts);
+    
+    if (storageMode === 'local') {
+      localStorage.setItem('workshop_parts', JSON.stringify(updatedParts));
+    } else {
+      setIsSyncing(true);
+      try {
+        if (isDelete && changedPart) {
+          await api.deletePart(changedPart.id);
+        } else if (changedPart) {
+          await api.savePart(changedPart);
+        }
+      } catch (e) {
+        console.error("Sync error", e);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+  };
+
+  // --- ACTIONS ---
+
   const sortedDevices = [...devices].sort((a, b) => 
     new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime()
   );
@@ -83,18 +191,22 @@ const App: React.FC = () => {
       status: DeviceStatus.RECEIVED,
       notes: ''
     };
-    setDevices((prev) => [...prev, device]);
+    persistDevice([...devices, device], device);
     setNewDevice({ status: DeviceStatus.RECEIVED });
     setShowAddDeviceModal(false);
   };
 
   const updateDeviceStatus = (id: string, status: DeviceStatus) => {
-    setDevices(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+    const updatedDevices = devices.map(d => d.id === id ? { ...d, status } : d);
+    const changedDevice = updatedDevices.find(d => d.id === id);
+    persistDevice(updatedDevices, changedDevice);
   };
 
   const deleteDevice = (id: string) => {
-    if (confirm('Вы уверены, что хотите удалить это устройство из базы?')) {
-      setDevices(prev => prev.filter(d => d.id !== id));
+    if (confirm('Удалить устройство?')) {
+      const deviceToDelete = devices.find(d => d.id === id);
+      const updatedDevices = devices.filter(d => d.id !== id);
+      persistDevice(updatedDevices, deviceToDelete, true);
     }
   };
 
@@ -107,16 +219,20 @@ const App: React.FC = () => {
       quantity: 1,
       inStock: inventoryTab === 'stock'
     };
-    setParts(prev => [...prev, part]);
+    persistPart([...parts, part], part);
     setNewPartName('');
   };
 
   const togglePartStockStatus = (id: string) => {
-    setParts(prev => prev.map(p => p.id === id ? { ...p, inStock: !p.inStock } : p));
+    const updatedParts = parts.map(p => p.id === id ? { ...p, inStock: !p.inStock } : p);
+    const changedPart = updatedParts.find(p => p.id === id);
+    persistPart(updatedParts, changedPart);
   };
 
   const deletePart = (id: string) => {
-    setParts(prev => prev.filter(p => p.id !== id));
+    const partToDelete = parts.find(p => p.id === id);
+    const updatedParts = parts.filter(p => p.id !== id);
+    persistPart(updatedParts, partToDelete, true);
   };
 
   const handleSendMessage = async () => {
@@ -127,8 +243,8 @@ const App: React.FC = () => {
     setChatInput('');
     setIsChatLoading(true);
 
-    const prompt = `Контекст: Мастерская электроники.
-    Текущие устройства в ремонте: ${devices.map(d => `${d.deviceModel} (${d.issueDescription})`).join(', ')}.
+    const prompt = `Контекст: Мастерская.
+    В ремонте: ${devices.map(d => `${d.deviceModel} (${d.issueDescription})`).join(', ')}.
     Вопрос: ${userMsg.text}`;
 
     const responseText = await generateWorkshopAdvice(prompt);
@@ -139,104 +255,104 @@ const App: React.FC = () => {
 
   // --- RENDERERS ---
 
-  const renderSidebar = () => (
-    <div className="w-64 bg-slate-900 text-slate-100 flex flex-col h-screen fixed left-0 top-0 overflow-y-auto no-print z-10">
-      <div className="p-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-blue-400">
-          <Wrench className="w-8 h-8" />
-          Мастерская
-        </h1>
-        <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider">Учет и Контроль</p>
+  if (!initLoaded) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50 text-slate-500">
+        <div className="animate-spin mr-2">
+           <Clock className="w-6 h-6" />
+        </div>
+        Загрузка мастерской...
       </div>
-      
-      <nav className="flex-1 px-4 space-y-2">
-        <button 
-          onClick={() => setView('repair')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${view === 'repair' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
-        >
-          <Clock className="w-5 h-5" />
-          <span>В ремонте</span>
-          {devices.length > 0 && <span className="ml-auto bg-slate-700 text-xs px-2 py-0.5 rounded-full">{devices.length}</span>}
-        </button>
+    );
+  }
 
-        <button 
-          onClick={() => setView('inventory')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${view === 'inventory' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
-        >
-          <Package className="w-5 h-5" />
-          <span>Склад и Покупки</span>
-        </button>
+  const renderSidebar = () => (
+    <>
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex w-64 bg-slate-900 text-slate-100 flex-col h-screen fixed left-0 top-0 overflow-y-auto no-print z-10">
+        <div className="p-6">
+          <h1 className="text-2xl font-bold flex items-center gap-2 text-blue-400">
+            <Wrench className="w-8 h-8" />
+            Мастерская
+          </h1>
+          <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
+             {storageMode === 'cloud' ? (
+               <span className="text-green-400 flex items-center gap-1"><Cloud className="w-3 h-3"/> Vercel DB</span>
+             ) : (
+               <span className="text-orange-400 flex items-center gap-1"><Database className="w-3 h-3"/> Local</span>
+             )}
+             {isSyncing && <span className="animate-pulse">...</span>}
+          </div>
+        </div>
+        
+        <nav className="flex-1 px-4 space-y-2">
+          <NavButtons current={view} setView={setView} devicesCount={devices.length} />
+        </nav>
 
-        <button 
-          onClick={() => setView('print')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${view === 'print' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
-        >
-          <Printer className="w-5 h-5" />
-          <span>Печать</span>
-        </button>
-
-        <button 
-          onClick={() => setView('ai_chat')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${view === 'ai_chat' ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
-        >
-          <Bot className="w-5 h-5" />
-          <span>AI Помощник</span>
-        </button>
-      </nav>
-
-      <div className="p-4 border-t border-slate-800">
-        <div className="text-xs text-slate-500 text-center">
+        <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">
           &copy; 2025 Workshop Pro
         </div>
       </div>
-    </div>
+
+      {/* Mobile Bottom Nav */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-slate-900 text-slate-100 flex justify-around items-center p-3 z-50 border-t border-slate-800 pb-safe">
+        <MobileNavButton view="repair" current={view} setView={setView} icon={<Clock className="w-6 h-6" />} label="Ремонт" badge={devices.length} />
+        <MobileNavButton view="inventory" current={view} setView={setView} icon={<Package className="w-6 h-6" />} label="Склад" />
+        <MobileNavButton view="print" current={view} setView={setView} icon={<Printer className="w-6 h-6" />} label="Печать" />
+        <MobileNavButton view="ai_chat" current={view} setView={setView} icon={<Bot className="w-6 h-6" />} label="AI" />
+      </div>
+    </>
   );
 
   const renderRepairView = () => (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-800">Устройства в работе</h2>
-          <p className="text-slate-500">Сортировка: от старых к новым</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-800">В работе</h2>
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            {storageMode === 'local' && (
+              <span className="text-orange-600 bg-orange-100 px-2 py-0.5 rounded text-xs">Локальный режим</span>
+            )}
+            <span>{sortedDevices.length} ус-тв</span>
+          </div>
         </div>
         <button 
           onClick={() => setShowAddDeviceModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-md transition-all active:scale-95"
+          className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
         >
           <Plus className="w-5 h-5" />
-          Принять устройство
+          Принять
         </button>
       </div>
 
       <div className="grid gap-4">
         {sortedDevices.length === 0 ? (
-          <div className="text-center py-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
-            <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-500 text-lg">Нет устройств в ремонте</p>
+          <div className="text-center py-12 md:py-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+            <Package className="w-12 h-12 md:w-16 md:h-16 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-500 text-lg">Нет устройств</p>
           </div>
         ) : (
           sortedDevices.map((device) => (
-            <div key={device.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow flex flex-col md:flex-row gap-6">
+            <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6">
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded uppercase tracking-wide">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="text-lg md:text-xl font-bold text-slate-800">{device.deviceModel}</h3>
+                  <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded">
                     {new Date(device.dateReceived).toLocaleDateString('ru-RU')}
                   </span>
-                  <h3 className="text-xl font-bold text-slate-800">{device.deviceModel}</h3>
                 </div>
-                <p className="text-sm text-slate-500 mb-2">Владелец: <span className="font-medium text-slate-700">{device.clientName}</span></p>
-                <div className="bg-red-50 text-red-700 p-3 rounded-md text-sm border border-red-100 mb-3">
-                  <span className="font-bold">Проблема:</span> {device.issueDescription}
+                <p className="text-sm text-slate-500 mb-2">{device.clientName}</p>
+                <div className="bg-red-50 text-red-700 p-2 md:p-3 rounded-md text-sm border border-red-100 mb-3">
+                  {device.issueDescription}
                 </div>
               </div>
 
-              <div className="w-full md:w-64 flex flex-col justify-between border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase">Статус</label>
+              <div className="w-full md:w-64 flex flex-row md:flex-col justify-between items-center md:items-stretch gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6">
+                <div className="flex-grow md:flex-grow-0">
                   <select 
                     value={device.status} 
                     onChange={(e) => updateDeviceStatus(device.id, e.target.value as DeviceStatus)}
-                    className={`w-full p-2 rounded border font-medium text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    className={`w-full p-2 rounded border font-medium text-sm focus:outline-none ${
                       device.status === DeviceStatus.READY ? 'bg-green-100 text-green-800 border-green-200' : 
                       device.status === DeviceStatus.ISSUED ? 'bg-gray-100 text-gray-500 border-gray-200' :
                       'bg-blue-50 text-blue-800 border-blue-200'
@@ -247,68 +363,62 @@ const App: React.FC = () => {
                     ))}
                   </select>
                 </div>
-                <div className="mt-4 flex justify-end">
-                  <button 
-                    onClick={() => deleteDevice(device.id)}
-                    className="text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-colors"
-                    title="Удалить"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
+                <button 
+                  onClick={() => deleteDevice(device.id)}
+                  className="text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal - Mobile Optimized */}
       {showAddDeviceModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <h3 className="text-2xl font-bold mb-6 text-slate-800">Новое устройство</h3>
+        <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl animate-slide-up md:animate-none">
+            <h3 className="text-2xl font-bold mb-4 text-slate-800">Новое устройство</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Модель устройства</label>
+                <label className="text-sm font-medium text-slate-700">Модель</label>
                 <input 
                   type="text" 
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  placeholder="Напр. Samsung TV, Утюг Philips..."
+                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   value={newDevice.deviceModel || ''}
                   onChange={e => setNewDevice({...newDevice, deviceModel: e.target.value})}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Имя клиента</label>
+                <label className="text-sm font-medium text-slate-700">Клиент</label>
                 <input 
                   type="text" 
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  placeholder="Иван Иванович"
+                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   value={newDevice.clientName || ''}
                   onChange={e => setNewDevice({...newDevice, clientName: e.target.value})}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Описание поломки</label>
+                <label className="text-sm font-medium text-slate-700">Поломка</label>
                 <textarea 
-                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none h-24"
-                  placeholder="Не включается, искрит..."
+                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none h-20"
                   value={newDevice.issueDescription || ''}
                   onChange={e => setNewDevice({...newDevice, issueDescription: e.target.value})}
                 />
               </div>
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-3 pt-2">
                 <button 
                   onClick={() => setShowAddDeviceModal(false)}
-                  className="flex-1 py-3 text-slate-600 font-medium hover:bg-slate-100 rounded-lg"
+                  className="flex-1 py-3 text-slate-600 font-medium bg-slate-100 rounded-lg"
                 >
                   Отмена
                 </button>
                 <button 
                   onClick={addDevice}
-                  className="flex-1 py-3 bg-blue-600 text-white font-medium hover:bg-blue-700 rounded-lg shadow"
+                  className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-lg"
                 >
-                  Добавить
+                  Сохранить
                 </button>
               </div>
             </div>
@@ -322,79 +432,75 @@ const App: React.FC = () => {
     const displayedParts = parts.filter(p => inventoryTab === 'stock' ? p.inStock : !p.inStock);
 
     return (
-      <div className="p-8 max-w-6xl mx-auto h-full flex flex-col">
-        <h2 className="text-3xl font-bold text-slate-800 mb-6">Склад запчастей</h2>
+      <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto">
+        <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-4">Склад</h2>
         
-        <div className="flex gap-4 mb-6 border-b border-slate-200">
+        <div className="flex gap-2 mb-4 border-b border-slate-200">
           <button 
             onClick={() => setInventoryTab('stock')}
-            className={`pb-3 px-4 font-medium transition-colors relative ${inventoryTab === 'stock' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`flex-1 md:flex-none pb-2 px-4 font-medium transition-colors border-b-2 ${inventoryTab === 'stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
           >
             В Наличии
-            {inventoryTab === 'stock' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600"></div>}
           </button>
           <button 
             onClick={() => setInventoryTab('buy')}
-            className={`pb-3 px-4 font-medium transition-colors relative flex items-center gap-2 ${inventoryTab === 'buy' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`flex-1 md:flex-none pb-2 px-4 font-medium transition-colors border-b-2 flex justify-center gap-2 ${inventoryTab === 'buy' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
           >
-            Купить (Список покупок)
-            <ShoppingCart className="w-4 h-4" />
-            {inventoryTab === 'buy' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600"></div>}
+            Купить <ShoppingCart className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex gap-3">
+        <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border border-slate-200 mb-4 flex flex-col md:flex-row gap-3">
           <select 
             value={newPartType}
             onChange={(e) => setNewPartType(e.target.value as PartType)}
-            className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm outline-none"
           >
             {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <input 
-            type="text" 
-            placeholder={inventoryTab === 'stock' ? "Добавить деталь на склад..." : "Что нужно купить?"}
-            className="flex-1 p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={newPartName}
-            onChange={(e) => setNewPartName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addPart()}
-          />
-          <button 
-            onClick={addPart}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 rounded-lg font-bold shadow-md transition-all active:scale-95"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <div className="flex gap-2 flex-1">
+            <input 
+              type="text" 
+              placeholder={inventoryTab === 'stock' ? "Название..." : "Что купить..."}
+              className="flex-1 p-3 border border-slate-300 rounded-lg outline-none"
+              value={newPartName}
+              onChange={(e) => setNewPartName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addPart()}
+            />
+            <button 
+              onClick={addPart}
+              className="bg-blue-600 text-white px-4 rounded-lg font-bold"
+            >
+              <Plus className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto pb-20">
+        <div className="flex-1 overflow-y-auto space-y-3 pb-20 md:pb-0">
           {displayedParts.map(part => (
-            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex justify-between items-center group">
+            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex justify-between items-center">
               <div>
-                <span className="text-xs text-blue-500 font-bold uppercase tracking-wider block mb-1">{part.type}</span>
+                <span className="text-[10px] text-blue-500 font-bold uppercase tracking-wider block">{part.type}</span>
                 <span className="font-medium text-slate-800 text-lg">{part.name}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <button 
                   onClick={() => togglePartStockStatus(part.id)}
-                  className={`p-2 rounded-full transition-colors ${part.inStock ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
-                  title={part.inStock ? "Переместить в 'Купить'" : "Переместить в 'Наличие'"}
+                  className={`p-2 rounded-full ${part.inStock ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}
                 >
-                  {part.inStock ? <ShoppingCart className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                  {part.inStock ? <ShoppingCart className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
                 </button>
                 <button 
                   onClick={() => deletePart(part.id)}
-                  className="p-2 rounded-full text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  className="text-slate-300 hover:text-red-500"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-5 h-5" />
                 </button>
               </div>
             </div>
           ))}
           {displayedParts.length === 0 && (
-            <div className="col-span-full text-center text-slate-400 py-10">
-              Список пуст
-            </div>
+            <div className="text-center text-slate-400 py-10">Пусто</div>
           )}
         </div>
       </div>
@@ -402,53 +508,53 @@ const App: React.FC = () => {
   };
 
   const renderAIChat = () => (
-    <div className="h-full flex flex-col bg-slate-50">
-      <div className="p-6 bg-white border-b border-slate-200 shadow-sm">
-        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+    <div className="h-[calc(100vh-80px)] md:h-full flex flex-col bg-slate-50 pb-safe">
+      <div className="p-4 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
           <Bot className="w-6 h-6 text-purple-600" />
           AI Помощник
         </h2>
-        <p className="text-sm text-slate-500">Спросите про аналоги, схемы или диагностику.</p>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {chatMessages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-2xl p-4 shadow-sm ${
+            <div className={`max-w-[85%] rounded-2xl p-3 shadow-sm text-sm md:text-base ${
               msg.role === 'user' 
                 ? 'bg-blue-600 text-white rounded-br-none' 
                 : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
             }`}>
-              {msg.text.split('\n').map((line, i) => <p key={i} className="mb-1 last:mb-0">{line}</p>)}
+              {msg.text.split('\n').map((line, i) => <p key={i} className="mb-1">{line}</p>)}
             </div>
           </div>
         ))}
         {isChatLoading && (
           <div className="flex justify-start">
-            <div className="bg-white p-4 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm flex items-center gap-2 text-slate-500">
-              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
-              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
-              <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+            <div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm">
+              <div className="flex gap-1">
+                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div>
+                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      <div className="p-4 bg-white border-t border-slate-200">
+      <div className="p-3 bg-white border-t border-slate-200">
         <div className="flex gap-2">
           <input 
             type="text"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            placeholder="Задайте вопрос AI..."
-            className="flex-1 p-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+            placeholder="Спросить..."
+            className="flex-1 p-3 border border-slate-300 rounded-xl outline-none focus:border-purple-500"
             disabled={isChatLoading}
           />
           <button 
             onClick={handleSendMessage}
             disabled={isChatLoading || !chatInput.trim()}
-            className="bg-purple-600 disabled:bg-purple-300 text-white p-4 rounded-xl transition-colors hover:bg-purple-700"
+            className="bg-purple-600 disabled:bg-slate-300 text-white p-3 rounded-xl"
           >
             <ArrowRight className="w-6 h-6" />
           </button>
@@ -461,7 +567,7 @@ const App: React.FC = () => {
     <div className="flex bg-slate-50 min-h-screen font-sans text-slate-900">
       {renderSidebar()}
       
-      <main className="flex-1 ml-64 print:ml-0 h-screen overflow-auto print:overflow-visible">
+      <main className="flex-1 ml-0 md:ml-64 print:ml-0 min-h-screen overflow-auto print:overflow-visible">
         {view === 'repair' && renderRepairView()}
         {view === 'inventory' && renderInventoryView()}
         {view === 'print' && <Printables devices={devices.filter(d => d.status !== DeviceStatus.ISSUED)} />}
@@ -470,5 +576,57 @@ const App: React.FC = () => {
     </div>
   );
 }
+
+// Subcomponents for clearer render logic
+const NavButtons = ({ current, setView, devicesCount }: any) => (
+  <>
+    <button 
+      onClick={() => setView('repair')}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'repair' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+    >
+      <Clock className="w-5 h-5" />
+      <span>В ремонте</span>
+      {devicesCount > 0 && <span className="ml-auto bg-slate-700 text-xs px-2 py-0.5 rounded-full">{devicesCount}</span>}
+    </button>
+    <button 
+      onClick={() => setView('inventory')}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'inventory' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+    >
+      <Package className="w-5 h-5" />
+      <span>Склад</span>
+    </button>
+    <button 
+      onClick={() => setView('print')}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'print' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+    >
+      <Printer className="w-5 h-5" />
+      <span>Печать</span>
+    </button>
+    <button 
+      onClick={() => setView('ai_chat')}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'ai_chat' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+    >
+      <Bot className="w-5 h-5" />
+      <span>AI</span>
+    </button>
+  </>
+);
+
+const MobileNavButton = ({ view, current, setView, icon, label, badge }: any) => (
+  <button 
+    onClick={() => setView(view)}
+    className={`flex flex-col items-center gap-1 p-2 rounded-lg relative ${current === view ? 'text-blue-400' : 'text-slate-500'}`}
+  >
+    <div className="relative">
+      {icon}
+      {badge > 0 && (
+        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full">
+          {badge}
+        </span>
+      )}
+    </div>
+    <span className="text-[10px] font-medium">{label}</span>
+  </button>
+);
 
 export default App;
