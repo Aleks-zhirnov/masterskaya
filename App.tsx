@@ -23,7 +23,8 @@ import {
   Table,
   Zap,
   Search,
-  Lightbulb
+  Lightbulb,
+  ExternalLink
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage } from './types';
 import { generateWorkshopAdvice } from './services/ai';
@@ -46,18 +47,36 @@ const RADIO_SUBCATEGORIES: Record<PartType, string[]> = {
   [PartType.OTHER]: ['Провода', 'Термоусадка', 'Припой/Флюс', 'Винты/Гайки', 'Радиаторы', 'Корпуса']
 };
 
-// Данные для таблицы ESR (Максимально допустимое сопротивление в Ом)
-const ESR_DATA = [
-  { cap: '1 uF', v10: '5.0', v16: '4.0', v25: '3.0', v63: '2.0' },
-  { cap: '2.2 uF', v10: '3.5', v16: '3.0', v25: '2.5', v63: '1.5' },
-  { cap: '4.7 uF', v10: '3.0', v16: '2.5', v25: '2.0', v63: '1.0' },
-  { cap: '10 uF', v10: '2.0', v16: '1.5', v25: '1.2', v63: '0.8' },
-  { cap: '22 uF', v10: '1.5', v16: '1.0', v25: '0.8', v63: '0.5' },
-  { cap: '47 uF', v10: '1.0', v16: '0.8', v25: '0.6', v63: '0.3' },
-  { cap: '100 uF', v10: '0.6', v16: '0.4', v25: '0.3', v63: '0.2' },
-  { cap: '220 uF', v10: '0.3', v16: '0.2', v25: '0.15', v63: '0.1' },
-  { cap: '470 uF', v10: '0.15', v16: '0.12', v25: '0.1', v63: '0.08' },
-  { cap: '1000 uF', v10: '0.1', v16: '0.08', v25: '0.06', v63: '0.04' },
+// Данные для таблицы ESR (STANDARD)
+// Усредненные значения для конденсаторов общего назначения (General Purpose 85C/105C)
+const ESR_DATA_STD = [
+  { cap: '1 uF', v10: '5.0', v16: '4.0', v25: '3.0', v63: '2.4' },
+  { cap: '2.2 uF', v10: '3.5', v16: '3.0', v25: '2.5', v63: '1.8' },
+  { cap: '4.7 uF', v10: '2.8', v16: '2.3', v25: '1.9', v63: '1.3' },
+  { cap: '10 uF', v10: '1.8', v16: '1.5', v25: '1.2', v63: '0.9' },
+  { cap: '22 uF', v10: '1.4', v16: '1.1', v25: '0.9', v63: '0.6' },
+  { cap: '47 uF', v10: '0.95', v16: '0.80', v25: '0.70', v63: '0.45' },
+  { cap: '100 uF', v10: '0.55', v16: '0.45', v25: '0.35', v63: '0.25' },
+  { cap: '220 uF', v10: '0.35', v16: '0.28', v25: '0.22', v63: '0.15' },
+  { cap: '470 uF', v10: '0.20', v16: '0.16', v25: '0.14', v63: '0.10' },
+  { cap: '1000 uF', v10: '0.12', v16: '0.10', v25: '0.08', v63: '0.06' },
+  { cap: '2200 uF', v10: '0.08', v16: '0.06', v25: '0.05', v63: '0.04' },
+];
+
+// Данные для таблицы Low ESR
+// Усредненные значения для серий типа Rubycon ZL / Nippon KY (для материнских плат, ИБП)
+const ESR_DATA_LOW = [
+  { cap: '1 uF', v10: '-', v16: '-', v25: '-', v63: '-' },
+  { cap: '4.7 uF', v10: '-', v16: '-', v25: '-', v63: '-' },
+  { cap: '10 uF', v10: '0.58', v16: '0.45', v25: '0.38', v63: '0.28' },
+  { cap: '22 uF', v10: '0.42', v16: '0.32', v25: '0.26', v63: '0.20' },
+  { cap: '47 uF', v10: '0.28', v16: '0.22', v25: '0.18', v63: '0.14' },
+  { cap: '100 uF', v10: '0.16', v16: '0.12', v25: '0.10', v63: '0.09' },
+  { cap: '220 uF', v10: '0.09', v16: '0.07', v25: '0.06', v63: '0.05' },
+  { cap: '470 uF', v10: '0.055', v16: '0.042', v25: '0.038', v63: '0.034' },
+  { cap: '1000 uF', v10: '0.036', v16: '0.028', v25: '0.025', v63: '0.021' },
+  { cap: '2200 uF', v10: '0.024', v16: '0.019', v25: '0.017', v63: '0.016' },
+  { cap: '3300 uF', v10: '0.018', v16: '0.015', v25: '0.014', v63: '0.013' },
 ];
 
 // --- SERVICE LAYER FOR DATA ---
@@ -156,6 +175,7 @@ const App: React.FC = () => {
 
   // References State
   const [activeRefTab, setActiveRefTab] = useState<'esr' | 'smd' | 'divider' | 'datasheet'>('esr');
+  const [esrMode, setEsrMode] = useState<'std' | 'low'>('std');
   const [smdCode, setSmdCode] = useState('');
   const [dividerValues, setDividerValues] = useState({ vin: 12, r1: 10000, r2: 1000 });
   const [ledValues, setLedValues] = useState({ vsource: 12, vled: 3, current: 20 });
@@ -428,6 +448,12 @@ const App: React.FC = () => {
     const result = await generateWorkshopAdvice(prompt);
     setDatasheetResult(result);
     setIsDatasheetLoading(false);
+  };
+
+  const openAllDatasheet = () => {
+    if (!datasheetQuery.trim()) return;
+    const url = `https://www.alldatasheet.com/view.jsp?Searchword=${encodeURIComponent(datasheetQuery)}`;
+    window.open(url, '_blank');
   };
 
   // --- RENDERERS ---
@@ -796,36 +822,57 @@ const App: React.FC = () => {
         {/* ESR TABLE CONTENT */}
         {activeRefTab === 'esr' && (
           <div>
-            <h3 className="text-lg font-bold text-slate-800 mb-2">Таблица ESR (Эквивалентное последовательное сопротивление)</h3>
-            <p className="text-sm text-slate-500 mb-4">Максимально допустимые значения в Омах. Для Low ESR конденсаторов значения должны быть меньше.</p>
-            <div className="overflow-x-auto">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Таблица ESR (ЭПС)</h3>
+                <p className="text-sm text-slate-500">Значения в Омах при 20-25°C. Зависят от производителя.</p>
+              </div>
+              <div className="bg-slate-100 p-1 rounded-lg flex">
+                <button 
+                  onClick={() => setEsrMode('std')}
+                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${esrMode === 'std' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}
+                >
+                  Стандартные
+                </button>
+                <button 
+                  onClick={() => setEsrMode('low')}
+                  className={`px-3 py-1 text-sm font-medium rounded-md transition-all ${esrMode === 'low' ? 'bg-white shadow text-green-600' : 'text-slate-500'}`}
+                >
+                  Low ESR
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border rounded-lg border-slate-200">
               <table className="w-full text-sm text-left text-slate-600 border-collapse">
-                <thead className="text-xs text-slate-700 uppercase bg-slate-100">
+                <thead className={`text-xs uppercase ${esrMode === 'std' ? 'bg-slate-100 text-slate-700' : 'bg-green-50 text-green-800'}`}>
                   <tr>
-                    <th className="px-4 py-3 rounded-tl-lg">Емкость</th>
+                    <th className="px-4 py-3">Емкость</th>
                     <th className="px-4 py-3">10V</th>
                     <th className="px-4 py-3">16V</th>
                     <th className="px-4 py-3">25V</th>
-                    <th className="px-4 py-3 rounded-tr-lg">63V+</th>
+                    <th className="px-4 py-3">63V+</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ESR_DATA.map((row, i) => (
-                    <tr key={i} className="bg-white border-b hover:bg-slate-50">
+                  {(esrMode === 'std' ? ESR_DATA_STD : ESR_DATA_LOW).map((row, i) => (
+                    <tr key={i} className="bg-white border-b hover:bg-slate-50 last:border-0">
                       <td className="px-4 py-3 font-bold text-slate-900">{row.cap}</td>
-                      <td className="px-4 py-3">{row.v10} Ω</td>
-                      <td className="px-4 py-3">{row.v16} Ω</td>
-                      <td className="px-4 py-3">{row.v25} Ω</td>
-                      <td className="px-4 py-3">{row.v63} Ω</td>
+                      <td className="px-4 py-3">{row.v10}</td>
+                      <td className="px-4 py-3">{row.v16}</td>
+                      <td className="px-4 py-3">{row.v25}</td>
+                      <td className="px-4 py-3">{row.v63}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="mt-4 p-4 bg-yellow-50 text-yellow-800 text-sm rounded-lg border border-yellow-200 flex gap-2">
+            <div className={`mt-4 p-4 text-sm rounded-lg border flex gap-2 ${esrMode === 'std' ? 'bg-blue-50 text-blue-800 border-blue-100' : 'bg-green-50 text-green-800 border-green-100'}`}>
               <Lightbulb className="w-5 h-5 flex-shrink-0" />
               <div>
-                <strong>Совет:</strong> Если измеренное ESR больше табличного значения более чем на 20-30%, конденсатор подлежит замене. В импульсных блоках питания используйте только Low ESR серии.
+                <strong>Примечание:</strong> {esrMode === 'std' 
+                  ? 'Для конденсаторов общего назначения (General Purpose 85°C/105°C). Если прибор показывает значение выше на 20-30%, конденсатор "высох".'
+                  : 'Для материнских плат, видеокарт и импульсных блоков питания. Используйте серии типа Rubycon ZL, Nichicon HM, Panasonic FR.'}
               </div>
             </div>
           </div>
@@ -947,9 +994,19 @@ const App: React.FC = () => {
               <button 
                 onClick={handleDatasheetSearch}
                 disabled={isDatasheetLoading || !datasheetQuery}
-                className="bg-purple-600 text-white px-6 rounded-lg font-bold hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                className="bg-purple-600 text-white px-4 rounded-lg font-bold hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                title="Спросить AI"
               >
-                {isDatasheetLoading ? <RefreshCw className="w-5 h-5 animate-spin"/> : 'Найти'}
+                {isDatasheetLoading ? <RefreshCw className="w-5 h-5 animate-spin"/> : 'AI Info'}
+              </button>
+              <button 
+                onClick={openAllDatasheet}
+                disabled={!datasheetQuery}
+                className="bg-orange-500 text-white px-4 rounded-lg font-bold hover:bg-orange-600 disabled:opacity-50 transition-colors flex items-center gap-2"
+                title="Искать на AllDatasheet.com"
+              >
+                <ExternalLink className="w-5 h-5"/>
+                PDF
               </button>
             </div>
 
@@ -960,16 +1017,10 @@ const App: React.FC = () => {
                  </div>
                ) : (
                  <div className="text-center text-slate-400 mt-10">
-                   Результат поиска появится здесь.<br/>
-                   AI найдет характеристики и цоколевку.
+                   Введите название и нажмите <strong>AI Info</strong> для краткой справки<br/>
+                   или <strong>PDF</strong> для поиска документации на AllDatasheet.
                  </div>
                )}
-            </div>
-
-            <div className="mt-4 text-xs text-slate-400 text-center">
-              Полезные ресурсы: 
-              <a href="https://www.alldatasheet.com" target="_blank" className="text-blue-500 hover:underline ml-1">AllDatasheet</a>,
-              <a href="https://pinout.xyz" target="_blank" className="text-blue-500 hover:underline ml-1">Pinout.xyz</a>
             </div>
           </div>
         )}
