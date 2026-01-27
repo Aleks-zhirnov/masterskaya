@@ -3,8 +3,6 @@ import { sql } from '@vercel/postgres';
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      // Postgres возвращает имена колонок в нижнем регистре. 
-      // Мы используем AS "camelCase", чтобы React получил правильные ключи.
       const { rows } = await sql`
         SELECT 
           id, 
@@ -12,7 +10,8 @@ export default async function handler(req, res) {
           devicemodel as "deviceModel", 
           issuedescription as "issueDescription", 
           datereceived as "dateReceived", 
-          status, 
+          status,
+          urgency,
           notes 
         FROM devices
       `;
@@ -20,18 +19,21 @@ export default async function handler(req, res) {
     } 
     
     if (req.method === 'POST') {
-      const { id, clientName, deviceModel, issueDescription, dateReceived, status, notes } = req.body;
+      const { id, clientName, deviceModel, issueDescription, dateReceived, status, urgency, notes } = req.body;
       
-      // Обновляем ON CONFLICT, чтобы обновлялись все поля (если вы исправили опечатку в имени клиента, это сохранится)
+      // Устанавливаем дефолтное значение urgency, если оно не пришло
+      const safeUrgency = urgency || 'normal';
+
       await sql`
-        INSERT INTO devices (id, clientName, deviceModel, issueDescription, dateReceived, status, notes)
-        VALUES (${id}, ${clientName}, ${deviceModel}, ${issueDescription}, ${dateReceived}, ${status}, ${notes || ''})
+        INSERT INTO devices (id, clientName, deviceModel, issueDescription, dateReceived, status, urgency, notes)
+        VALUES (${id}, ${clientName}, ${deviceModel}, ${issueDescription}, ${dateReceived}, ${status}, ${safeUrgency}, ${notes || ''})
         ON CONFLICT (id) DO UPDATE SET 
           clientName = ${clientName},
           deviceModel = ${deviceModel},
           issueDescription = ${issueDescription},
           dateReceived = ${dateReceived},
           status = ${status}, 
+          urgency = ${safeUrgency},
           notes = ${notes || ''};
       `;
       return res.status(200).json({ success: true });

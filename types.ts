@@ -6,6 +6,12 @@ export enum DeviceStatus {
   ISSUED = 'Выдан'
 }
 
+export enum Urgency {
+  NORMAL = 'normal',
+  HIGH = 'high',
+  CRITICAL = 'critical'
+}
+
 export interface Device {
   id: string;
   clientName: string;
@@ -13,6 +19,7 @@ export interface Device {
   issueDescription: string;
   dateReceived: string; // ISO string
   status: DeviceStatus;
+  urgency: Urgency;
   notes?: string;
 }
 
@@ -39,7 +46,7 @@ export interface SparePart {
   inStock: boolean; // true = in stock, false = to buy
 }
 
-export type ViewState = 'repair' | 'inventory' | 'print' | 'ai_chat' | 'references';
+export type ViewState = 'repair' | 'inventory' | 'print' | 'ai_chat' | 'references' | 'knowledge';
 
 export interface ChatMessage {
   role: 'user' | 'model';
