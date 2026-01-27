@@ -29,7 +29,16 @@ import {
   AlertCircle,
   BrainCircuit,
   Flame,
-  Battery
+  Battery,
+  ChevronDown,
+  ChevronUp,
+  Car,
+  Utensils,
+  Droplets,
+  CupSoda,
+  Activity,
+  Disc,
+  Scissors
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
 import { generateWorkshopAdvice } from './services/ai';
@@ -52,45 +61,125 @@ const RADIO_SUBCATEGORIES: Record<PartType, string[]> = {
   [PartType.OTHER]: ['Провода', 'Термоусадка', 'Припой/Флюс', 'Винты/Гайки', 'Радиаторы', 'Корпуса']
 };
 
-// Данные для базы знаний
+// Данные для базы знаний (Расширенные)
 const KNOWLEDGE_BASE = [
   {
     title: 'Автомобильные ЭБУ (ECU)',
-    icon: <BrainCircuit className="w-6 h-6 text-blue-500" />,
+    icon: <BrainCircuit className="w-6 h-6 text-blue-600" />,
+    description: 'Bosch, Siemens, Delphi, Denso и др.',
     issues: [
-      { problem: 'Микротрещины в пайке разъема', solution: 'Основная причина "плавающих" отказов. Пропаять контакты под микроскопом.' },
-      { problem: 'Выход из строя ключей зажигания/форсунок', solution: 'Прозвонка IGBT/MOSFET транзисторов. Часто горят из-за КЗ в проводке авто.' },
-      { problem: 'Окисление переходных отверстий', solution: 'Характерно для "утопленников". Восстановление дорожек проволокой МГТФ.' },
-      { problem: 'Сбой EEPROM', solution: 'Слет иммобилайзера или адаптаций. Требуется перепрошивка программатором.' }
+      { problem: 'Микротрещины в пайке разъема', solution: 'Симптомы: "плавающие" ошибки, отказ цилиндров при тряске. Решение: Полная пропайка контактов гребенки под микроскопом с качественным флюсом. Часто встречается на старых Opel, Audi.' },
+      { problem: 'Пробой ключей зажигания/форсунок', solution: 'Симптомы: Двигатель троит постоянно. Причина: КЗ в катушке или проводке. Диагностика: Прозвонка IGBT/MOSFET (часто BTS2140, IRGS14C40L и аналоги). Менять только после устранения КЗ в авто.' },
+      { problem: 'Окисление переходных отверстий (VIAs)', solution: 'Характерно для "утопленников" или блоков, стоящих в нише дворников. Решение: Восстановление дорожек проволокой МГТФ, покрытие лаком Plastik-71.' },
+      { problem: 'Сбой EEPROM / Flash', solution: 'Симптомы: Не выходит на связь, ошибка контрольной суммы. Решение: Выпаивание памяти (SOIC-8), считывание программатором, правка дампа или заливка заведомо исправного (Immo Off).' }
     ]
   },
   {
     title: 'Платы управления газовых котлов',
     icon: <Flame className="w-6 h-6 text-orange-500" />,
+    description: 'Baxi, Ariston, Protherm, Navien',
     issues: [
-      { problem: 'Высыхание конденсаторов в БП', solution: 'Котел не включается или перезагружается. Менять все электролиты в обвязке ШИМ (обычно 47uF-400V, 470uF-25V).' },
-      { problem: 'Залипание реле', solution: 'Ошибки розжига или работы насоса. Простучать реле или заменить (обычно 24V DC).' },
-      { problem: 'Пробой оптопар', solution: 'Ошибки контроля пламени. Проверка цепи ионизации.' },
-      { problem: 'Варистор на входе', solution: 'Сгорает при скачках напряжения (гроза). Менять вместе с предохранителем.' }
+      { problem: 'Высыхание электролитов в БП', solution: 'Симптомы: Котел циклично перезагружается, моргает дисплеем. Решение: Замена конденсаторов в обвязке ШИМ (часто 47uF 400V, 470uF 25V, 100uF 35V). Ставить только Low ESR 105°C.' },
+      { problem: 'Ошибка розжига (нет искры)', solution: 'Проверить реле газового клапана (залипание) и трансформатор розжига. Часто пробивает высоковольтный конденсатор (синяя "капля" 2kV).' },
+      { problem: 'Ошибка контроля пламени (Ионизация)', solution: 'Симптомы: Зажигается и тухнет через 3 сек. Решение: Проверить фазировку (вилку в розетке). Проверить резисторы в цепи электрода ионизации (номиналы 1-10 МОм часто уплывают в обрыв).' },
+      { problem: 'Варистор на входе', solution: 'Симптомы: Сгорел предохранитель, чернота на входе. Причина: Скачок напряжения. Решение: Замена варистора (S14K275) и предохранителя.' }
     ]
   },
   {
-    title: 'Источники бесперебойного питания (ИБП/UPS)',
-    icon: <Battery className="w-6 h-6 text-green-500" />,
+    title: 'Робот-пылесосы',
+    icon: <Disc className="w-6 h-6 text-indigo-500" />,
+    description: 'Xiaomi, Roborock, iRobot',
     issues: [
-      { problem: 'Мертвая АКБ', solution: 'Самая частая причина. Напряжение ниже 10В под нагрузкой - замена.' },
-      { problem: 'Мелкие конденсаторы (10-47uF)', solution: 'ИБП не включается даже с новой АКБ. "Сохнут" мелкие емкости в цепи запуска.' },
-      { problem: 'Залипание реле переключения обмоток', solution: 'Щелкает, не переходит на сеть. Чистка контактов или замена реле.' },
-      { problem: 'Холодная пайка силовых транзисторов', solution: 'Перегрев и отвал контакта на радиаторах.' }
+      { problem: 'Ошибка лидара (Lidar Error 1)', solution: 'Симптомы: Пылесос крутится на месте, "башня" не вращается. Причина: Сгорел моторчик привода лидара (Mabuchi RF-500/300) или растянут пассик. Решение: Замена мотора или пассика (подходят О-ринги).' },
+      { problem: 'Блокировка колеса', solution: 'Симптомы: Ошибка колеса, хотя оно чистое. Причина: Волосы намотались на ось внутри редуктора или сдох микропереключатель (концевик) вывешивания колеса.' },
+      { problem: 'Ошибка турбины (Fan Error)', solution: 'Симптомы: Громкий гул или не всасывает. Причина: Попадание воды -> коррозия крыльчатки и платы управления турбиной. Часто требуется замена турбины целиком.' },
+      { problem: 'Быстрый разряд / Ошибка 13', solution: 'Деградация банок 18650 или блокировка BMS платы из-за глубокого разряда. Решение: "Толкнуть" банки напрямую или замена сборки.' }
     ]
   },
   {
-    title: 'Powerbank (Внешние аккумуляторы)',
+    title: 'Источники бесперебойного питания (ИБП)',
+    icon: <Battery className="w-6 h-6 text-green-600" />,
+    description: 'APC, Ippon, Powercom',
+    issues: [
+      { problem: 'Не держит нагрузку / Пищит сразу', solution: '90% случаев - мертвая АКБ (12V 7Ah/9Ah). Проверка: Под нагрузкой (лампочка 50Вт) напряжение падает ниже 10В мгновенно.' },
+      { problem: 'Не включается с новой АКБ', solution: 'Симптомы: Полная тишина. Причина: "Сухие" мелкие конденсаторы (22uF 50V, 47uF 63V) в цепи "холодного старта" или питания логики.' },
+      { problem: 'Щелкает реле (туда-сюда)', solution: 'Причина: Подгоревшие контакты реле AVR (стабилизации) или плохой контакт подстроечных резисторов настройки напряжения.' },
+      { problem: 'Перегрев ключей инвертора', solution: 'Пробой полевиков (IRF3205, IRF740) из-за перегрузки или высыхания смазки под радиатором.' }
+    ]
+  },
+  {
+    title: 'Увлажнители воздуха (Ультразвуковые)',
+    icon: <Droplets className="w-6 h-6 text-cyan-500" />,
+    description: 'Polaris, Ballu, Electrolux',
+    issues: [
+      { problem: 'Вентилятор дует, пара нет', solution: 'Самая частая поломка. Вышел из строя транзистор генератора (обычно BU406, 2SC3834). Обязательно менять вместе с ним резистор в базе и стабилитрон.' },
+      { problem: 'Слабый пар', solution: 'Деградация пьезокерамического излучателя (мембраны). Если на ней есть сколы, налет, который не смывается уксусом, или трещины - замена (диск 20мм или 25мм).' },
+      { problem: 'Не включается, воды нет на плате', solution: 'Герконовый датчик уровня воды (поплавок) заклинил или размагнитился магнит в поплавке.' },
+      { problem: 'Шум при работе', solution: 'Износ втулки вентилятора (кулера 12В турбинного типа). Чистка и смазка помогают ненадолго, лучше замена.' }
+    ]
+  },
+  {
+    title: 'Мультиварки',
+    icon: <Utensils className="w-6 h-6 text-red-500" />,
+    description: 'Redmond, Polaris, Moulinex',
+    issues: [
+      { problem: 'Не включается вообще', solution: 'Сгорел термопредохранитель (обычно 10A 170°C-185°C), спрятан в кембрике, прижатом к дну чаши (тэну). Проверить причину перегрева (грязное дно, реле).' },
+      { problem: 'Ошибка E1 / E2 / E3', solution: 'Обрыв или КЗ датчиков температуры. Верхний датчик (в крышке) часто переламывается в месте сгиба провода при открытии крышки. Датчики обычно NTC 50k или 100k.' },
+      { problem: 'Долго готовит / Не греет', solution: 'Подгорели контакты силового реле включения ТЭНа. Зачистка контактов или замена реле (T90, T91 и т.д.).' },
+      { problem: 'Залита жиром/супом', solution: 'Попадание жидкости на плату управления под дисплеем. Промывка спиртом, восстановление дорожек, замена тактовых кнопок (начинают глючить).' }
+    ]
+  },
+  {
+    title: 'Блок управления креслами Авто',
+    icon: <Car className="w-6 h-6 text-slate-600" />,
+    description: 'Mercedes, BMW, Land Rover',
+    issues: [
+      { problem: 'Не работает регулировка в одну сторону', solution: 'Подгорание контактов реле внутри блока или самих кнопок (джойстика). В блоках памяти сидений часто отваливается пайка на разъемах от вибрации.' },
+      { problem: 'Кресло движется рывками', solution: 'Износ щеток в моторах привода или загрязнение коллектора. Реже - срабатывание токовой защиты драйвера из-за закисшего механизма (смазать червячную передачу).' },
+      { problem: 'Высаживает аккумулятор (Sleep mode)', solution: 'Блок не "засыпает" и потребляет ток. Причина: пробой CAN-трансивера (TJA1050 и аналоги) или "текущий" конденсатор по питанию процессора.' },
+      { problem: 'Вода под сиденьем', solution: 'Очень частая проблема. Зелень на контактах разъема под полом. Пины сгнивают полностью. Требуется перепиновка разъема.' }
+    ]
+  },
+  {
+    title: 'Диспенсеры для воды (Кулеры)',
+    icon: <CupSoda className="w-6 h-6 text-blue-400" />,
+    description: 'Напольные и настольные',
+    issues: [
+      { problem: 'Не холодит (электронное охл.)', solution: 'В дешевых моделях используется элемент Пельтье. Если вентилятор сзади не крутится -> Пельтье перегревается и сгорает. Решение: Замена элемента Пельтье (TEC1-12706) и вентилятора.' },
+      { problem: 'Не греет воду', solution: 'Сработал защитный термостат (таблетка) на баке нагрева (нажать кнопку сброса по центру таблетки). Или сгорел кольцевой ТЭН (менять бак).' },
+      { problem: 'Течет вода', solution: 'Трещины в трубках от старости, слетел хомут, или трещина в баке холодной воды (пластик). Часто текут краники (износ резинок).' }
+    ]
+  },
+  {
+    title: 'Powerbank (Внешние АКБ)',
     icon: <Zap className="w-6 h-6 text-yellow-500" />,
+    description: 'Xiaomi, Baseus, No-name',
     issues: [
-      { problem: 'Выломан USB разъем', solution: 'Механическое повреждение. Замена разъема с усилением пайки корпусных ног.' },
-      { problem: 'Глубокий разряд банок 18650', solution: 'Контроллер блокирует зарядку. Попытаться "толкнуть" банки напрямую от ЛБП до 3.0В, затем штатно.' },
-      { problem: 'Смерть контроллера заряда', solution: 'Греется микросхема, нет индикации. Ремонт часто нерентабелен, проще заменить модуль.' }
+      { problem: 'Выломан USB / Type-C', solution: 'Механическое повреждение. При пайке нового разъема обязательно пролудить корпусные ноги и залить эпоксидкой для прочности.' },
+      { problem: 'Не заряжается, мигает 1 деление', solution: 'Глубокий разряд банок (ниже 2.5В). Контроллер (IP5306 и др.) ушел в защиту. Разобрать, зарядить банки напрямую от ЛБП до 3.2В, дальше пойдет штатно.' },
+      { problem: 'Греется микросхема, не работает', solution: 'Пробой DC-DC преобразователя. Ремонт часто нерентабелен, если нет донора. Проще купить плату-модуль с Aliexpress и переставить банки.' }
+    ]
+  },
+  {
+    title: 'Массажеры и Массажные кресла',
+    icon: <Activity className="w-6 h-6 text-pink-600" />,
+    description: 'Yamaguchi, Casada, Bork',
+    issues: [
+      { problem: 'Не включается, щелкает', solution: 'Проблема в импульсном БП. Там высокие пусковые токи. Проверять входные конденсаторы (400V) и диодный мост. Часто горят термисторы NTC на входе.' },
+      { problem: 'Мотор гудит, но не крутит', solution: 'Пробой H-моста управления двигателем (4 транзистора на радиаторе). Если пробит один - менять все 4 и драйверы затворов.' },
+      { problem: 'Ошибка пульта / Обрыв связи', solution: 'Переламывается витой провод, идущий к пульту. Прозванивать каждую жилу под нагрузкой (изгибать провод). Внутри пульта часто отваливается кварц от падений.' },
+      { problem: 'Скрип и треск механики', solution: 'Высыхание смазки в червячных передачах и пластиковых шестернях. Использовать густую силиконовую смазку (СИ-180 и т.п.), литол разъедает пластик!' }
+    ]
+  },
+  {
+    title: 'Электрогазонокосилки',
+    icon: <Scissors className="w-6 h-6 text-green-700" />,
+    description: 'Makita, Bosch, Gardena',
+    issues: [
+      { problem: 'Гудит, но нож не крутится', solution: 'Если двигатель асинхронный: высох пусковой конденсатор (белый бочонок 10-20uF). Если коллекторный: заклинил подшипник или стерлись щетки.' },
+      { problem: 'Запах гари, искры', solution: 'Межвитковое замыкание ротора или статора. Ремонт (перемотка) часто дороже нового мотора. Проверить щетки - может они зависли.' },
+      { problem: 'Не включается', solution: 'Проверить кнопку пуска (внутри ручки контакты подгорают от пыли и тока) и кабель (перебит вилкой). Также бывает термозащита внутри обмотки.' },
+      { problem: 'Сильная вибрация', solution: 'Дисбаланс ножа (погнут о камень) или разбит нижний подшипник/втулка скольжения (пластиковое посадочное место выплавилось).' }
     ]
   }
 ];
@@ -214,6 +303,9 @@ const App: React.FC = () => {
   const [inventoryFilterType, setInventoryFilterType] = useState<PartType | 'ALL'>('ALL');
   const [inventoryFilterSubtype, setInventoryFilterSubtype] = useState<string>('ALL');
   
+  // UI State - Knowledge Base
+  const [expandedKnowledge, setExpandedKnowledge] = useState<string | null>(null);
+
   // Parts Form State
   const [newPartName, setNewPartName] = useState('');
   const [newPartType, setNewPartType] = useState<PartType>(PartType.OTHER);
@@ -783,28 +875,50 @@ const App: React.FC = () => {
   );
   
   const renderKnowledgeBaseView = () => (
-     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto">
+     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto">
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BrainCircuit className="w-8 h-8 text-indigo-600" />База знаний мастера</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-           {KNOWLEDGE_BASE.map((section, idx) => (
-              <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                 <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
-                    <div className="p-2 bg-white rounded-lg shadow-sm">{section.icon}</div>
-                    <h3 className="font-bold text-lg text-slate-800">{section.title}</h3>
-                 </div>
-                 <div className="p-4 space-y-4">
-                    {section.issues.map((item, i) => (
-                       <div key={i} className="pb-3 border-b border-slate-100 last:border-0 last:pb-0">
-                          <div className="flex items-start gap-2 mb-1">
-                             <AlertCircle className="w-4 h-4 text-red-400 mt-1 flex-shrink-0" />
-                             <span className="font-medium text-slate-700">{item.problem}</span>
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+           {KNOWLEDGE_BASE.map((section, idx) => {
+              const isExpanded = expandedKnowledge === section.title;
+              return (
+                 <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
+                    <button 
+                       onClick={() => setExpandedKnowledge(isExpanded ? null : section.title)}
+                       className={`w-full p-4 flex items-center justify-between text-left transition-colors ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                    >
+                       <div className="flex items-center gap-4">
+                          <div className={`p-2 rounded-lg shadow-sm bg-white`}>{section.icon}</div>
+                          <div>
+                             <h3 className="font-bold text-lg text-slate-800">{section.title}</h3>
+                             {section.description && <p className="text-xs text-slate-500">{section.description}</p>}
                           </div>
-                          <p className="text-sm text-slate-500 pl-6 leading-relaxed bg-slate-50 p-2 rounded">{item.solution}</p>
                        </div>
-                    ))}
+                       {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                    </button>
+                    
+                    {isExpanded && (
+                       <div className="p-4 bg-white border-t border-slate-100 animate-slide-down">
+                          <div className="grid gap-6">
+                             {section.issues.map((item, i) => (
+                                <div key={i} className="flex gap-3">
+                                   <div className="mt-1 flex-shrink-0">
+                                      <AlertCircle className="w-5 h-5 text-red-500" />
+                                   </div>
+                                   <div className="flex-1">
+                                      <h4 className="font-bold text-slate-800 text-sm mb-1">{item.problem}</h4>
+                                      <div className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                         <span className="font-semibold text-slate-700">Решение: </span>
+                                         {item.solution}
+                                      </div>
+                                   </div>
+                                </div>
+                             ))}
+                          </div>
+                       </div>
+                    )}
                  </div>
-              </div>
-           ))}
+              );
+           })}
         </div>
      </div>
   );
