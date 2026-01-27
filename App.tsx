@@ -14,24 +14,24 @@ import {
   X,
   Cloud,
   CloudOff,
-  Database
+  Database,
+  RefreshCw
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage } from './types';
 import { generateWorkshopAdvice } from './services/ai';
 import { Printables } from './components/Printables';
 
 // --- SERVICE LAYER FOR DATA ---
-// This allows switching between LocalStorage and Vercel API seamlessly
 
 const api = {
-  isCloudAvailable: async () => {
-    try {
-      // Try to hit the seed endpoint to check connection/init
-      const res = await fetch('/api/seed'); 
-      return res.ok;
-    } catch (e) {
-      return false;
+  // Проверка и инициализация БД
+  initCloud: async () => {
+    const res = await fetch('/api/seed'); 
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to connect to DB');
     }
+    return true;
   },
   
   getDevices: async () => {
@@ -96,38 +96,56 @@ const App: React.FC = () => {
 
   // --- INITIALIZATION & SYNC ---
 
+  const loadLocal = () => {
+    setStorageMode('local');
+    const localDevs = localStorage.getItem('workshop_devices');
+    const localParts = localStorage.getItem('workshop_parts');
+    if (localDevs) setDevices(JSON.parse(localDevs));
+    if (localParts) setParts(JSON.parse(localParts));
+  };
+
+  const tryConnectCloud = async () => {
+    setIsSyncing(true);
+    try {
+      await api.initCloud(); // This creates tables if missing
+      setStorageMode('cloud');
+      
+      const cloudDevices = await api.getDevices();
+      const cloudParts = await api.getParts();
+      setDevices(cloudDevices);
+      setParts(cloudParts);
+      return true;
+    } catch (e: any) {
+      console.error("Cloud connection failed:", e);
+      return false;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     const initApp = async () => {
-      // 1. Check if Cloud is available
-      const cloudAvailable = await api.isCloudAvailable();
-      
-      if (cloudAvailable) {
-        setStorageMode('cloud');
-        try {
-          const cloudDevices = await api.getDevices();
-          const cloudParts = await api.getParts();
-          setDevices(cloudDevices);
-          setParts(cloudParts);
-        } catch (e) {
-          console.error("Cloud fetch failed, falling back", e);
-          loadLocal();
-        }
-      } else {
+      const connected = await tryConnectCloud();
+      if (!connected) {
         loadLocal();
       }
       setInitLoaded(true);
     };
 
-    const loadLocal = () => {
-      setStorageMode('local');
-      const localDevs = localStorage.getItem('workshop_devices');
-      const localParts = localStorage.getItem('workshop_parts');
-      if (localDevs) setDevices(JSON.parse(localDevs));
-      if (localParts) setParts(JSON.parse(localParts));
-    };
-
     initApp();
   }, []);
+
+  // Manual retry handler
+  const handleManualConnect = async () => {
+    if (storageMode === 'cloud') return;
+    
+    const success = await tryConnectCloud();
+    if (success) {
+      alert("Успешно подключено к базе данных Vercel!");
+    } else {
+      alert("Не удалось подключиться к базе данных. \n\n1. Убедитесь, что вы смотрите на deployed версию (не localhost).\n2. Убедитесь, что сделали Redeploy после добавления базы.\n3. Проверьте консоль браузера для деталей.");
+    }
+  };
 
   // --- PERSISTENCE HELPERS ---
 
@@ -275,14 +293,28 @@ const App: React.FC = () => {
             <Wrench className="w-8 h-8" />
             Мастерская
           </h1>
-          <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
+          <button 
+            onClick={handleManualConnect}
+            className="flex items-center gap-2 mt-4 text-xs bg-slate-800 py-1 px-2 rounded cursor-pointer hover:bg-slate-700 transition-colors w-full"
+            title="Нажмите для переподключения"
+          >
              {storageMode === 'cloud' ? (
-               <span className="text-green-400 flex items-center gap-1"><Cloud className="w-3 h-3"/> Vercel DB</span>
+               <span className="text-green-400 flex items-center gap-1 font-bold">
+                 <Cloud className="w-3 h-3"/> Vercel DB
+               </span>
              ) : (
-               <span className="text-orange-400 flex items-center gap-1"><Database className="w-3 h-3"/> Local</span>
+               <span className="text-orange-400 flex items-center gap-1 font-bold">
+                 <CloudOff className="w-3 h-3"/> Local Mode
+               </span>
              )}
-             {isSyncing && <span className="animate-pulse">...</span>}
-          </div>
+             {isSyncing ? (
+               <RefreshCw className="w-3 h-3 ml-auto animate-spin text-slate-400" />
+             ) : (
+               <span className="ml-auto text-slate-500 text-[10px]">
+                 {storageMode === 'cloud' ? 'Connected' : 'Click to Connect'}
+               </span>
+             )}
+          </button>
         </div>
         
         <nav className="flex-1 px-4 space-y-2">
