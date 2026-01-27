@@ -17,19 +17,24 @@ export interface Device {
 }
 
 export enum PartType {
-  CAPACITOR = 'Конденсатор',
-  RESISTOR = 'Резистор',
-  DIODE = 'Диод',
-  TRANSISTOR = 'Транзистор',
-  LED = 'Светодиод',
-  CHIP = 'Микросхема',
-  OTHER = 'Другое'
+  CAPACITOR = 'Конденсаторы',
+  RESISTOR = 'Резисторы',
+  DIODE = 'Диоды',
+  TRANSISTOR = 'Транзисторы',
+  LED = 'Светодиоды',
+  CHIP = 'Микросхемы',
+  CONNECTOR = 'Разъемы',
+  SWITCH = 'Кнопки/Перекл.',
+  FUSE = 'Предохранители',
+  MODULE = 'Готовые модули',
+  OTHER = 'Разное'
 }
 
 export interface SparePart {
   id: string;
   name: string;
   type: PartType;
+  subtype?: string; // Subcategory (e.g., "Electrolytic", "SMD 0805")
   quantity: number;
   inStock: boolean; // true = in stock, false = to buy
 }

@@ -9,12 +9,14 @@ export default async function handler(req, res) {
     } 
     
     if (req.method === 'POST') {
-      const { id, name, type, quantity, inStock } = req.body;
+      const { id, name, type, subtype, quantity, inStock } = req.body;
       await sql`
-        INSERT INTO parts (id, name, type, quantity, inStock)
-        VALUES (${id}, ${name}, ${type}, ${quantity}, ${inStock})
+        INSERT INTO parts (id, name, type, subtype, quantity, inStock)
+        VALUES (${id}, ${name}, ${type}, ${subtype || ''}, ${quantity}, ${inStock})
         ON CONFLICT (id) DO UPDATE SET 
-        inStock = ${inStock};
+        quantity = ${quantity},
+        inStock = ${inStock},
+        subtype = ${subtype || ''};
       `;
       return res.status(200).json({ success: true });
     }

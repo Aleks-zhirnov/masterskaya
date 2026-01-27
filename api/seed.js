@@ -26,7 +26,17 @@ export default async function handler(request, response) {
       );
     `;
 
-    return response.status(200).json({ message: 'Database tables created successfully' });
+    // Миграция: Добавляем колонку subtype, если её нет (безопасный ALTER)
+    // Vercel Postgres/Neon поддерживает IF NOT EXISTS для колонок в новых версиях, 
+    // но стандартный SQL - нет. Используем блок catch для игнорирования ошибки "duplicate column" или простой ALTER
+    try {
+        await sql`ALTER TABLE parts ADD COLUMN IF NOT EXISTS subtype varchar(255)`;
+    } catch (e) {
+        // Колонка скорее всего уже есть или БД не поддерживает IF NOT EXISTS в ALTER
+        console.log("Column migration note:", e.message);
+    }
+
+    return response.status(200).json({ message: 'Database tables created/updated successfully' });
   } catch (error) {
     return response.status(500).json({ error: error.message });
   }

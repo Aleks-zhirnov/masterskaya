@@ -15,55 +15,98 @@ import {
   Cloud,
   CloudOff,
   Database,
-  RefreshCw
+  RefreshCw,
+  Minus,
+  Tag
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage } from './types';
 import { generateWorkshopAdvice } from './services/ai';
 import { Printables } from './components/Printables';
 
+// --- CONSTANTS ---
+
+// Справочник категорий радиодеталей
+const RADIO_SUBCATEGORIES: Record<PartType, string[]> = {
+  [PartType.CAPACITOR]: ['Электролитические', 'Керамические (SMD)', 'Керамические (Выводные)', 'Танталовые', 'Пленочные', 'Пусковые'],
+  [PartType.RESISTOR]: ['0.125Вт', '0.25Вт', '0.5Вт', '1Вт', '2Вт', '5Вт (Цемент)', 'SMD 0805', 'SMD 0603', 'SMD 1206', 'Переменные (Потенциометры)'],
+  [PartType.DIODE]: ['Выпрямительные', 'Шоттки', 'Стабилитроны', 'Диодные мосты', 'Варикапы', 'SMD'],
+  [PartType.TRANSISTOR]: ['Биполярные NPN', 'Биполярные PNP', 'MOSFET N-канал', 'MOSFET P-канал', 'IGBT', 'Полевые'],
+  [PartType.LED]: ['3мм', '5мм', '10мм', 'SMD', 'Ленты', 'Мощные (1W+)'],
+  [PartType.CHIP]: ['Микроконтроллеры', 'Память', 'Логика', 'ШИМ контроллеры', 'Операционные усилители', 'Стабилизаторы'],
+  [PartType.CONNECTOR]: ['USB', 'HDMI', 'Audio Jack', 'Клеммники', 'Питание DC', 'Шлейфы'],
+  [PartType.SWITCH]: ['Тактовые кнопки', 'Тумблеры', 'Рокерные', 'Микропереключатели'],
+  [PartType.FUSE]: ['Стеклянные 5x20', 'Автомобильные', 'Термопредохранители', 'Самовосстанавливающиеся'],
+  [PartType.MODULE]: ['DC-DC Понижающие', 'DC-DC Повышающие', 'Зарядка Li-Ion', 'Arduino', 'ESP', 'Датчики'],
+  [PartType.OTHER]: ['Провода', 'Термоусадка', 'Припой/Флюс', 'Винты/Гайки', 'Радиаторы', 'Корпуса']
+};
+
 // --- SERVICE LAYER FOR DATA ---
 
 const api = {
+  // Безопасный метод запроса с проверкой типа контента
+  request: async (url: string, options?: RequestInit) => {
+    try {
+      const res = await fetch(url, options);
+      const contentType = res.headers.get("content-type");
+      
+      // Если сервер вернул HTML (например, 404/500 страница от Vercel или index.html от Vite), бросаем ошибку
+      if (contentType && contentType.includes("text/html")) {
+        throw new Error("API вернул HTML. Возможно, вы в локальном режиме или произошла ошибка сервера.");
+      }
+
+      if (!res.ok) {
+        let errorMsg = `Ошибка сервера: ${res.status}`;
+        try {
+          if (contentType && contentType.includes("application/json")) {
+            const errData = await res.json();
+            errorMsg = errData.error || errorMsg;
+          }
+        } catch (e) { /* ignore parse error for error response */ }
+        throw new Error(errorMsg);
+      }
+
+      // Пытаемся распарсить успешный ответ как JSON
+      try {
+        return await res.json();
+      } catch (e) {
+        throw new Error("Некорректный JSON от сервера");
+      }
+    } catch (error: any) {
+      throw error; // Пробрасываем ошибку дальше для обработки в UI
+    }
+  },
+
   // Проверка и инициализация БД
   initCloud: async () => {
-    const res = await fetch('/api/seed'); 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to connect to DB');
-    }
-    return true;
+    return api.request('/api/seed');
   },
   
   getDevices: async () => {
-    const res = await fetch('/api/devices');
-    if (!res.ok) throw new Error('Failed to fetch');
-    return res.json();
+    return api.request('/api/devices');
   },
   saveDevice: async (device: Device) => {
-    await fetch('/api/devices', {
+    return api.request('/api/devices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(device)
     });
   },
   deleteDevice: async (id: string) => {
-    await fetch(`/api/devices?id=${id}`, { method: 'DELETE' });
+    return api.request(`/api/devices?id=${id}`, { method: 'DELETE' });
   },
 
   getParts: async () => {
-    const res = await fetch('/api/parts');
-    if (!res.ok) throw new Error('Failed to fetch');
-    return res.json();
+    return api.request('/api/parts');
   },
   savePart: async (part: SparePart) => {
-    await fetch('/api/parts', {
+    return api.request('/api/parts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(part)
     });
   },
   deletePart: async (id: string) => {
-    await fetch(`/api/parts?id=${id}`, { method: 'DELETE' });
+    return api.request(`/api/parts?id=${id}`, { method: 'DELETE' });
   }
 };
 
@@ -84,8 +127,12 @@ const App: React.FC = () => {
   const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
   const [newDevice, setNewDevice] = useState<Partial<Device>>({ status: DeviceStatus.RECEIVED });
   const [inventoryTab, setInventoryTab] = useState<'stock' | 'buy'>('stock');
+  
+  // Parts Form State
   const [newPartName, setNewPartName] = useState('');
   const [newPartType, setNewPartType] = useState<PartType>(PartType.OTHER);
+  const [newPartSubtype, setNewPartSubtype] = useState<string>('');
+  const [newPartQuantity, setNewPartQuantity] = useState<number>(1);
 
   // AI Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -116,7 +163,7 @@ const App: React.FC = () => {
       setParts(cloudParts);
       return true;
     } catch (e: any) {
-      console.error("Cloud connection failed:", e);
+      console.warn("Cloud connection check failed (falling back to local):", e.message);
       return false;
     } finally {
       setIsSyncing(false);
@@ -134,6 +181,11 @@ const App: React.FC = () => {
 
     initApp();
   }, []);
+
+  // Update subtype when type changes
+  useEffect(() => {
+    setNewPartSubtype(RADIO_SUBCATEGORIES[newPartType]?.[0] || '');
+  }, [newPartType]);
 
   // Manual retry handler
   const handleManualConnect = async () => {
@@ -201,10 +253,8 @@ const App: React.FC = () => {
   const addDevice = () => {
     if (!newDevice.clientName || !newDevice.deviceModel) return;
     
-    // Determine the date
     let dateReceived = new Date().toISOString();
     if (newDevice.dateReceived) {
-        // newDevice.dateReceived comes from input type="date" (YYYY-MM-DD)
         dateReceived = new Date(newDevice.dateReceived).toISOString();
     }
 
@@ -242,11 +292,25 @@ const App: React.FC = () => {
       id: Date.now().toString(),
       name: newPartName,
       type: newPartType,
-      quantity: 1,
+      subtype: newPartSubtype,
+      quantity: newPartQuantity > 0 ? newPartQuantity : 1,
       inStock: inventoryTab === 'stock'
     };
     persistPart([...parts, part], part);
     setNewPartName('');
+    setNewPartQuantity(1);
+  };
+
+  const updatePartQuantity = (id: string, delta: number) => {
+    const part = parts.find(p => p.id === id);
+    if (!part) return;
+    
+    const newQuantity = (part.quantity || 0) + delta;
+    if (newQuantity < 0) return;
+
+    const updatedPart = { ...part, quantity: newQuantity };
+    const updatedParts = parts.map(p => p.id === id ? updatedPart : p);
+    persistPart(updatedParts, updatedPart);
   };
 
   const togglePartStockStatus = (id: string) => {
@@ -499,57 +563,117 @@ const App: React.FC = () => {
           </button>
         </div>
 
-        <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border border-slate-200 mb-4 flex flex-col md:flex-row gap-3">
-          <select 
-            value={newPartType}
-            onChange={(e) => setNewPartType(e.target.value as PartType)}
-            className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm outline-none"
-          >
-            {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <div className="flex gap-2 flex-1">
+        {/* ADD PART FORM */}
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-4 flex flex-col gap-3">
+          <div className="flex flex-col md:flex-row gap-3">
+            <select 
+              value={newPartType}
+              onChange={(e) => setNewPartType(e.target.value as PartType)}
+              className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm outline-none flex-1 font-medium"
+            >
+              {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            
+            <select 
+              value={newPartSubtype}
+              onChange={(e) => setNewPartSubtype(e.target.value)}
+              className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm outline-none flex-1"
+            >
+              <option value="">-- Подкатегория --</option>
+              {RADIO_SUBCATEGORIES[newPartType]?.map(st => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+              <option value="Другое">Другое</option>
+            </select>
+          </div>
+
+          <div className="flex gap-2">
             <input 
               type="text" 
-              placeholder={inventoryTab === 'stock' ? "Название..." : "Что купить..."}
-              className="flex-1 p-3 border border-slate-300 rounded-lg outline-none"
+              placeholder={inventoryTab === 'stock' ? "Название (номинал, маркировка)..." : "Что купить..."}
+              className="flex-[2] p-3 border border-slate-300 rounded-lg outline-none"
               value={newPartName}
               onChange={(e) => setNewPartName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addPart()}
             />
+            
+            <input 
+              type="number"
+              min="1"
+              placeholder="Кол-во"
+              className="w-20 p-3 border border-slate-300 rounded-lg outline-none text-center"
+              value={newPartQuantity}
+              onChange={(e) => setNewPartQuantity(parseInt(e.target.value) || 1)}
+            />
+
             <button 
               onClick={addPart}
-              className="bg-blue-600 text-white px-4 rounded-lg font-bold"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg font-bold flex items-center justify-center transition-colors"
             >
               <Plus className="w-6 h-6" />
             </button>
           </div>
         </div>
 
+        {/* PARTS LIST */}
         <div className="flex-1 overflow-y-auto space-y-3 pb-20 md:pb-0">
           {displayedParts.map(part => (
-            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex justify-between items-center">
-              <div>
-                <span className="text-[10px] text-blue-500 font-bold uppercase tracking-wider block">{part.type}</span>
-                <span className="font-medium text-slate-800 text-lg">{part.name}</span>
+            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                   <span className="text-[10px] text-white bg-blue-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">{part.type}</span>
+                   {part.subtype && (
+                     <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                       <Tag className="w-3 h-3"/> {part.subtype}
+                     </span>
+                   )}
+                </div>
+                <span className="font-medium text-slate-800 text-lg block">{part.name}</span>
               </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => togglePartStockStatus(part.id)}
-                  className={`p-2 rounded-full ${part.inStock ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}
-                >
-                  {part.inStock ? <ShoppingCart className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
-                </button>
-                <button 
-                  onClick={() => deletePart(part.id)}
-                  className="text-slate-300 hover:text-red-500"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
+              
+              <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto border-t md:border-t-0 border-slate-100 pt-3 md:pt-0">
+                {/* Quantity Controls */}
+                <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                   <button 
+                     onClick={() => updatePartQuantity(part.id, -1)}
+                     className="px-3 py-1 hover:bg-slate-200 active:bg-slate-300 text-slate-600"
+                   >
+                     <Minus className="w-4 h-4" />
+                   </button>
+                   <div className="px-3 py-1 font-mono font-bold text-slate-700 min-w-[3rem] text-center border-l border-r border-slate-200 bg-white">
+                     {part.quantity || 1}
+                   </div>
+                   <button 
+                     onClick={() => updatePartQuantity(part.id, 1)}
+                     className="px-3 py-1 hover:bg-slate-200 active:bg-slate-300 text-slate-600"
+                   >
+                     <Plus className="w-4 h-4" />
+                   </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => togglePartStockStatus(part.id)}
+                    className={`p-2 rounded-full transition-colors ${part.inStock ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
+                    title={part.inStock ? "Переместить в список покупок" : "Переместить на склад"}
+                  >
+                    {part.inStock ? <ShoppingCart className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+                  </button>
+                  <button 
+                    onClick={() => deletePart(part.id)}
+                    className="text-slate-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
           {displayedParts.length === 0 && (
-            <div className="text-center text-slate-400 py-10">Пусто</div>
+            <div className="text-center text-slate-400 py-10 flex flex-col items-center gap-2">
+               <Package className="w-12 h-12 text-slate-200" />
+               <span>Список пуст</span>
+            </div>
           )}
         </div>
       </div>
