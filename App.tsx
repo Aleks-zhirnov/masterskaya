@@ -200,12 +200,20 @@ const App: React.FC = () => {
 
   const addDevice = () => {
     if (!newDevice.clientName || !newDevice.deviceModel) return;
+    
+    // Determine the date
+    let dateReceived = new Date().toISOString();
+    if (newDevice.dateReceived) {
+        // newDevice.dateReceived comes from input type="date" (YYYY-MM-DD)
+        dateReceived = new Date(newDevice.dateReceived).toISOString();
+    }
+
     const device: Device = {
       id: Date.now().toString(),
       clientName: newDevice.clientName,
       deviceModel: newDevice.deviceModel,
       issueDescription: newDevice.issueDescription || '',
-      dateReceived: new Date().toISOString(),
+      dateReceived: dateReceived,
       status: DeviceStatus.RECEIVED,
       notes: ''
     };
@@ -429,6 +437,15 @@ const App: React.FC = () => {
                   className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   value={newDevice.clientName || ''}
                   onChange={e => setNewDevice({...newDevice, clientName: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Дата приема</label>
+                <input 
+                  type="date"
+                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  value={newDevice.dateReceived ? newDevice.dateReceived.split('T')[0] : new Date().toLocaleDateString('en-CA')}
+                  onChange={e => setNewDevice({...newDevice, dateReceived: e.target.value})}
                 />
               </div>
               <div>
