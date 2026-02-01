@@ -464,6 +464,55 @@ const WorkshopRobot = () => {
   );
 };
 
+interface NavButtonProps {
+  current: ViewState;
+  setView: (view: ViewState) => void;
+  devicesCount: number;
+}
+
+const NavButtons: React.FC<NavButtonProps> = ({ current, setView, devicesCount }) => {
+  const btnClass = (v: ViewState) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 cursor-pointer ${current === v ? 'bg-blue-600 text-white shadow-md transform scale-105' : 'text-slate-400 hover:bg-slate-800 hover:text-white hover:pl-5'}`;
+
+  return (
+    <div className="space-y-1">
+      <div onClick={() => setView('repair')} className={btnClass('repair')}>
+         <div className="relative"><Wrench className="w-5 h-5" />{devicesCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full animate-pulse">{devicesCount}</span>}</div>
+         <span className="font-medium">В ремонте</span>
+      </div>
+      <div onClick={() => setView('planning')} className={btnClass('planning')}><CalendarCheck className="w-5 h-5" /><span className="font-medium">План работ</span></div>
+      <div onClick={() => setView('inventory')} className={btnClass('inventory')}><Package className="w-5 h-5" /><span className="font-medium">Склад</span></div>
+      <div onClick={() => setView('print')} className={btnClass('print')}><Printer className="w-5 h-5" /><span className="font-medium">Печать</span></div>
+      <div onClick={() => setView('ai_chat')} className={btnClass('ai_chat')}><Bot className="w-5 h-5" /><span className="font-medium">AI Помощник</span></div>
+      
+      <div className="pt-4 pb-2 text-xs font-bold text-slate-600 uppercase tracking-wider px-4">База знаний</div>
+      <div onClick={() => setView('references')} className={btnClass('references')}><BookOpen className="w-5 h-5" /><span className="font-medium">Справочники</span></div>
+      <div onClick={() => setView('knowledge')} className={btnClass('knowledge')}><BrainCircuit className="w-5 h-5" /><span className="font-medium">База дефектов</span></div>
+    </div>
+  );
+};
+
+interface MobileNavButtonProps {
+  view: ViewState;
+  current: ViewState;
+  setView: (view: ViewState) => void;
+  icon: React.ReactNode;
+  label: string;
+  badge?: number;
+}
+
+const MobileNavButton: React.FC<MobileNavButtonProps> = ({ view, current, setView, icon, label, badge }) => (
+  <button 
+    onClick={() => setView(view)} 
+    className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${current === view ? 'text-blue-400 scale-110' : 'text-slate-500'}`}
+  >
+    <div className="relative">
+      {icon}
+      {badge && badge > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold px-1.5 rounded-full">{badge}</span>}
+    </div>
+    <span className="text-[10px] font-medium">{label}</span>
+  </button>
+);
+
 const App: React.FC = () => {
   // --- STATE ---
   const [view, setView] = useState<ViewState>('repair');
@@ -680,6 +729,16 @@ const App: React.FC = () => {
         return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
      });
   }, [devices, sortMethod]);
+
+  // MOVE useMemo HERE
+  const stats = useMemo(() => ({
+      total: devices.length,
+      received: devices.filter(d => d.status === DeviceStatus.RECEIVED).length,
+      inProgress: devices.filter(d => d.status === DeviceStatus.IN_PROGRESS).length,
+      waiting: devices.filter(d => d.status === DeviceStatus.WAITING_PARTS).length,
+      ready: devices.filter(d => d.status === DeviceStatus.READY).length,
+      issued: devices.filter(d => d.status === DeviceStatus.ISSUED).length
+  }), [devices]);
 
   const getDaysInShop = (dateStr: string) => {
       const start = new Date(dateStr);
@@ -914,15 +973,7 @@ const App: React.FC = () => {
   };
 
   const renderRepairView = () => {
-      // Подсчет статистики MEMOIZED
-      const stats = useMemo(() => ({
-          total: devices.length,
-          received: devices.filter(d => d.status === DeviceStatus.RECEIVED).length,
-          inProgress: devices.filter(d => d.status === DeviceStatus.IN_PROGRESS).length,
-          waiting: devices.filter(d => d.status === DeviceStatus.WAITING_PARTS).length,
-          ready: devices.filter(d => d.status === DeviceStatus.READY).length,
-          issued: devices.filter(d => d.status === DeviceStatus.ISSUED).length
-      }), [devices]);
+      // stats is now computed at the component level to adhere to Rules of Hooks
 
       return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in transform-gpu">
@@ -1046,258 +1097,268 @@ const App: React.FC = () => {
   );
   };
 
-  const renderInventoryView = () => {
-    // Filter Logic
-    const displayedParts = parts.filter(p => {
-       const matchesTab = inventoryTab === 'stock' ? p.inStock : !p.inStock;
-       const matchesType = inventoryFilterType === 'ALL' || p.type === inventoryFilterType;
-       const matchesSubtype = inventoryFilterSubtype === 'ALL' || p.subtype === inventoryFilterSubtype;
-       return matchesTab && matchesType && matchesSubtype;
-    });
-
-    return (
-      <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in transform-gpu">
-        <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-4">Склад</h2>
-        <div className="flex gap-2 mb-4 border-b border-slate-200">
-          <button onClick={() => setInventoryTab('stock')} className={`flex-1 md:flex-none pb-2 px-4 font-medium transition-colors border-b-2 ${inventoryTab === 'stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>В Наличии</button>
-          <button onClick={() => setInventoryTab('buy')} className={`flex-1 md:flex-none pb-2 px-4 font-medium transition-colors border-b-2 flex justify-center gap-2 ${inventoryTab === 'buy' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Купить <ShoppingCart className="w-4 h-4" /></button>
-        </div>
-        
-        {/* ADD PART FORM */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-4 flex flex-col gap-3 transition-shadow hover:shadow-md will-change-transform">
-          <div className="flex flex-col md:flex-row gap-3">
-            <select value={newPartType} onChange={(e) => setNewPartType(e.target.value as PartType)} className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm outline-none flex-1 font-medium focus:border-blue-500 transition-colors">{Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}</select>
-            <select value={newPartSubtype} onChange={(e) => setNewPartSubtype(e.target.value)} className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm outline-none flex-1 focus:border-blue-500 transition-colors"><option value="">-- Подкатегория --</option>{RADIO_SUBCATEGORIES[newPartType]?.map(st => <option key={st} value={st}>{st}</option>)}<option value="Другое">Другое</option></select>
+  const renderInventoryView = () => (
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+       <div className="flex justify-between items-center mb-6">
+          <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-2"><Package className="w-8 h-8 text-blue-600" />Склад запчастей</h2>
+          <div className="flex bg-white rounded-lg p-1 shadow border border-slate-200">
+             <button onClick={() => setInventoryTab('stock')} className={`px-4 py-1.5 rounded text-sm font-bold transition-all ${inventoryTab === 'stock' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-50'}`}>В наличии</button>
+             <button onClick={() => setInventoryTab('buy')} className={`px-4 py-1.5 rounded text-sm font-bold transition-all ${inventoryTab === 'buy' ? 'bg-orange-100 text-orange-700' : 'text-slate-500 hover:bg-slate-50'}`}>Купить</button>
           </div>
-          <div className="flex gap-2">
-            <input type="text" placeholder={inventoryTab === 'stock' ? "Название (номинал, маркировка)..." : "Что купить..."} className="flex-[2] p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 transition-colors" value={newPartName} onChange={(e) => setNewPartName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPart()} />
-            <input type="number" min="1" placeholder="Кол-во" className="w-20 p-3 border border-slate-300 rounded-lg outline-none text-center focus:border-blue-500 transition-colors" value={newPartQuantity} onChange={(e) => setNewPartQuantity(parseInt(e.target.value) || 1)} />
-            <button onClick={addPart} className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg font-bold flex items-center justify-center transition-all active:scale-95 duration-200 shadow-md will-change-transform"><Plus className="w-6 h-6" /></button>
-          </div>
-        </div>
+       </div>
 
-        {/* FILTERS BAR */}
-        <div className="flex flex-col md:flex-row gap-2 mb-4 bg-slate-100 p-3 rounded-lg border border-slate-200">
-           <div className="flex items-center gap-2 text-slate-500 min-w-fit">
-              <Filter className="w-4 h-4" />
-              <span className="text-sm font-bold uppercase">Фильтр:</span>
-           </div>
-           <select 
-             value={inventoryFilterType} 
-             onChange={(e) => setInventoryFilterType(e.target.value as PartType | 'ALL')}
-             className="p-2 rounded border border-slate-300 text-sm bg-white outline-none flex-1 focus:border-blue-500 transition-colors"
-           >
-              <option value="ALL">Все категории</option>
-              {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
-           </select>
-           {inventoryFilterType !== 'ALL' && (
-             <select 
-               value={inventoryFilterSubtype} 
-               onChange={(e) => setInventoryFilterSubtype(e.target.value)}
-               className="p-2 rounded border border-slate-300 text-sm bg-white outline-none flex-1 focus:border-blue-500 transition-colors"
-             >
-                <option value="ALL">Все подкатегории</option>
-                {RADIO_SUBCATEGORIES[inventoryFilterType]?.map(st => <option key={st} value={st}>{st}</option>)}
+       {/* Filters */}
+       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-wrap gap-4 items-end">
+          <div className="flex-1 min-w-[200px]">
+             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Категория</label>
+             <select value={inventoryFilterType} onChange={(e) => setInventoryFilterType(e.target.value as any)} className="w-full p-2 border border-slate-300 rounded font-medium">
+                <option value="ALL">Все категории</option>
+                {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
              </select>
-           )}
-        </div>
-
-        {/* PARTS LIST */}
-        <div className="flex-1 overflow-y-auto space-y-3 pb-20 md:pb-0">
-          {displayedParts.map(part => (
-            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center gap-4 transition-all hover:shadow-md hover:-translate-y-0.5 duration-200 transform-gpu will-change-transform">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                   <span className="text-[10px] text-white bg-blue-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">{part.type}</span>
-                   {part.subtype && <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><Tag className="w-3 h-3"/> {part.subtype}</span>}
-                </div>
-                <span className="font-medium text-slate-800 text-lg block">{part.name}</span>
-              </div>
-              <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto border-t md:border-t-0 border-slate-100 pt-3 md:pt-0">
-                <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
-                   <button onClick={() => updatePartQuantity(part.id, -1)} className="px-3 py-1 hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors"><Minus className="w-4 h-4" /></button>
-                   <div className="px-3 py-1 font-mono font-bold text-slate-700 min-w-[3rem] text-center border-l border-r border-slate-200 bg-white">{part.quantity || 1}</div>
-                   <button onClick={() => updatePartQuantity(part.id, 1)} className="px-3 py-1 hover:bg-slate-200 active:bg-slate-300 text-slate-600 transition-colors"><Plus className="w-4 h-4" /></button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => togglePartStockStatus(part.id)} className={`p-2 rounded-full transition-all active:scale-90 duration-200 ${part.inStock ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`} title={part.inStock ? "Переместить в список покупок" : "Переместить на склад"}>{part.inStock ? <ShoppingCart className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}</button>
-                  <button onClick={() => deletePart(part.id)} className="text-slate-300 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-all active:scale-90 duration-200"><Trash2 className="w-5 h-5" /></button>
-                </div>
-              </div>
-            </div>
-          ))}
-          {displayedParts.length === 0 && <div className="text-center text-slate-400 py-10 flex flex-col items-center gap-2"><Package className="w-12 h-12 text-slate-200" /><span>Список пуст</span></div>}
-        </div>
-      </div>
-    );
-  };
-
-  const renderReferencesView = () => (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in transform-gpu">
-      <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BookOpen className="w-8 h-8 text-blue-600" />Справочники и Инструменты</h2>
-      <div className="flex overflow-x-auto gap-2 mb-6 pb-2 no-scrollbar">
-        <button onClick={() => setActiveRefTab('esr')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all active:scale-95 duration-200 ${activeRefTab === 'esr' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><Table className="w-4 h-4 inline mr-2" />ESR Таблица</button>
-        <button onClick={() => setActiveRefTab('smd')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all active:scale-95 duration-200 ${activeRefTab === 'smd' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><Calculator className="w-4 h-4 inline mr-2" />SMD Калькулятор</button>
-        <button onClick={() => setActiveRefTab('divider')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all active:scale-95 duration-200 ${activeRefTab === 'divider' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><Zap className="w-4 h-4 inline mr-2" />Делители & LED</button>
-        <button onClick={() => setActiveRefTab('datasheet')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all active:scale-95 duration-200 ${activeRefTab === 'datasheet' ? 'bg-purple-600 text-white shadow-md' : 'bg-white text-purple-600 hover:bg-purple-50 border border-purple-100'}`}><Search className="w-4 h-4 inline mr-2" />AI Даташит</button>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 md:p-6 flex-1 overflow-auto">
-        {activeRefTab === 'esr' && (
-          <div>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-              <div><h3 className="text-lg font-bold text-slate-800">Таблица ESR (ЭПС)</h3><p className="text-sm text-slate-500">Значения в Омах при 20-25°C. Зависят от производителя.</p></div>
-              <div className="bg-slate-100 p-1 rounded-lg flex">
-                <button onClick={() => setEsrMode('std')} className={`px-3 py-1 text-sm font-medium rounded-md transition-all duration-200 ${esrMode === 'std' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Стандартные</button>
-                <button onClick={() => setEsrMode('low')} className={`px-3 py-1 text-sm font-medium rounded-md transition-all duration-200 ${esrMode === 'low' ? 'bg-white shadow text-green-600' : 'text-slate-500 hover:text-slate-700'}`}>Low ESR</button>
-              </div>
-            </div>
-            <div className="overflow-x-auto border rounded-lg border-slate-200">
-              <table className="w-full text-sm text-left text-slate-600 border-collapse">
-                <thead className={`text-xs uppercase ${esrMode === 'std' ? 'bg-slate-100 text-slate-700' : 'bg-green-50 text-green-800'}`}><tr><th className="px-4 py-3">Емкость</th><th className="px-4 py-3">10V</th><th className="px-4 py-3">16V</th><th className="px-4 py-3">25V</th><th className="px-4 py-3">63V+</th></tr></thead>
-                <tbody>
-                  {(esrMode === 'std' ? ESR_DATA_STD : ESR_DATA_LOW).map((row, i) => (
-                    <tr key={i} className="bg-white border-b hover:bg-slate-50 last:border-0 transition-colors"><td className="px-4 py-3 font-bold text-slate-900">{row.cap}</td><td className="px-4 py-3">{row.v10}</td><td className="px-4 py-3">{row.v16}</td><td className="px-4 py-3">{row.v25}</td><td className="px-4 py-3">{row.v63}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           </div>
-        )}
-
-        {activeRefTab === 'smd' && (
-          <div className="max-w-md mx-auto">
-             <h3 className="text-lg font-bold text-slate-800 mb-4 text-center">Расшифровка SMD резисторов</h3>
-             <div className="bg-slate-100 p-8 rounded-xl mb-6 flex flex-col items-center shadow-inner">
-                <input type="text" maxLength={4} placeholder="Код (напр. 103, 4R7)" className="text-4xl font-mono text-center uppercase w-full max-w-[200px] p-2 border-b-2 border-slate-400 bg-transparent outline-none placeholder:text-slate-300 focus:border-blue-500 transition-colors" value={smdCode} onChange={(e) => setSmdCode(e.target.value)} />
-                <div className="mt-6 text-xl font-bold text-blue-600 h-8">{smdCode ? calculateSMD(smdCode) : 'Введите код'}</div>
+          {inventoryFilterType !== 'ALL' && (
+             <div className="flex-1 min-w-[200px]">
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Тип</label>
+                <select value={inventoryFilterSubtype} onChange={(e) => setInventoryFilterSubtype(e.target.value)} className="w-full p-2 border border-slate-300 rounded font-medium">
+                   <option value="ALL">Все типы</option>
+                   {RADIO_SUBCATEGORIES[inventoryFilterType]?.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
              </div>
-          </div>
-        )}
+          )}
+          <div className="w-full h-px bg-slate-200 my-2 md:hidden"></div>
+       </div>
 
-        {activeRefTab === 'divider' && (
-          <div className="grid md:grid-cols-2 gap-8">
-            <div>
-              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Zap className="w-5 h-5 text-yellow-500" /> Делитель напряжения</h3>
-              <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100 hover:shadow-md transition-shadow">
-                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">V in (Вольт)</label><input type="number" className="w-full p-2 border rounded focus:border-blue-500 transition-colors" value={dividerValues.vin} onChange={e => setDividerValues({...dividerValues, vin: parseFloat(e.target.value) || 0})} /></div>
-                <div className="flex gap-4"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">R1 (Ом)</label><input type="number" className="w-full p-2 border rounded focus:border-blue-500 transition-colors" value={dividerValues.r1} onChange={e => setDividerValues({...dividerValues, r1: parseFloat(e.target.value) || 0})} /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">R2 (Ом)</label><input type="number" className="w-full p-2 border rounded focus:border-blue-500 transition-colors" value={dividerValues.r2} onChange={e => setDividerValues({...dividerValues, r2: parseFloat(e.target.value) || 0})} /></div></div>
-                <div className="mt-2 pt-4 border-t border-slate-200"><div className="text-xs text-slate-500 uppercase">V out</div><div className="text-3xl font-bold text-slate-800">{calculateDividerVout()} V</div></div>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Lightbulb className="w-5 h-5 text-blue-500" /> Резистор для LED</h3>
-              <div className="space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-100 hover:shadow-md transition-shadow">
-                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Напряжение источника (V)</label><input type="number" className="w-full p-2 border rounded focus:border-blue-500 transition-colors" value={ledValues.vsource} onChange={e => setLedValues({...ledValues, vsource: parseFloat(e.target.value) || 0})} /></div>
-                 <div className="flex gap-4"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">LED (V)</label><input type="number" className="w-full p-2 border rounded focus:border-blue-500 transition-colors" value={ledValues.vled} onChange={e => setLedValues({...ledValues, vled: parseFloat(e.target.value) || 0})} /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ток (mA)</label><input type="number" className="w-full p-2 border rounded focus:border-blue-500 transition-colors" value={ledValues.current} onChange={e => setLedValues({...ledValues, current: parseFloat(e.target.value) || 0})} /></div></div>
-                 <div className="mt-2 pt-4 border-t border-slate-200 flex justify-between items-end"><div><div className="text-xs text-slate-500 uppercase">Резистор</div><div className="text-3xl font-bold text-slate-800">{calculateLedResistor().r} Ω</div></div><div className="text-right"><div className="text-xs text-slate-500 uppercase">Мощность</div><div className="text-xl font-bold text-slate-600">{calculateLedResistor().p} W</div></div></div>
-              </div>
-            </div>
+       {/* Add Part Form */}
+       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex flex-wrap gap-3 items-end">
+          <div className="flex-grow min-w-[200px]">
+             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Название</label>
+             <input type="text" placeholder="Например: Конденсатор 1000uF 25V" className="w-full p-2 border border-slate-300 rounded" value={newPartName} onChange={(e) => setNewPartName(e.target.value)} />
           </div>
-        )}
+          <div className="w-40">
+             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Тип</label>
+             <select value={newPartType} onChange={(e) => setNewPartType(e.target.value as PartType)} className="w-full p-2 border border-slate-300 rounded">
+                {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
+             </select>
+          </div>
+          {RADIO_SUBCATEGORIES[newPartType] && (
+             <div className="w-40">
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Подтип</label>
+                <select value={newPartSubtype} onChange={(e) => setNewPartSubtype(e.target.value)} className="w-full p-2 border border-slate-300 rounded">
+                   {RADIO_SUBCATEGORIES[newPartType].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+             </div>
+          )}
+          <div className="w-20">
+             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Кол-во</label>
+             <input type="number" min="1" className="w-full p-2 border border-slate-300 rounded" value={newPartQuantity} onChange={(e) => setNewPartQuantity(parseInt(e.target.value))} />
+          </div>
+          <button onClick={addPart} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700 transition-colors"><Plus className="w-6 h-6" /></button>
+       </div>
 
-        {activeRefTab === 'datasheet' && (
-          <div className="flex flex-col h-full">
-            <div className="text-center mb-6"><div className="inline-block p-3 bg-purple-100 rounded-full mb-2 animate-bounce"><Search className="w-8 h-8 text-purple-600" /></div><h3 className="text-xl font-bold text-slate-800">Умный поиск Datasheet</h3><p className="text-slate-500">Введите маркировку (напр. NE555, IRF3205)</p></div>
-            <div className="flex gap-2 max-w-lg mx-auto w-full mb-6">
-              <input type="text" value={datasheetQuery} onChange={(e) => setDatasheetQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleDatasheetSearch()} placeholder="Маркировка компонента..." className="flex-1 p-3 border border-slate-300 rounded-lg outline-none focus:border-purple-500 shadow-sm transition-colors" />
-              <button onClick={handleDatasheetSearch} disabled={isDatasheetLoading || !datasheetQuery} className="bg-purple-600 text-white px-4 rounded-lg font-bold hover:bg-purple-700 disabled:opacity-50 transition-all active:scale-95 duration-200 shadow-md flex items-center gap-2 will-change-transform"><RefreshCw className={`w-5 h-5 ${isDatasheetLoading ? 'animate-spin' : ''}`}/> {isDatasheetLoading ? '' : 'AI Info'}</button>
-              <button onClick={openAllDatasheet} disabled={!datasheetQuery} className="bg-orange-500 text-white px-4 rounded-lg font-bold hover:bg-orange-600 disabled:opacity-50 transition-all active:scale-95 duration-200 shadow-md flex items-center gap-2 will-change-transform"><ExternalLink className="w-5 h-5"/>PDF</button>
-            </div>
-            <div className="flex-1 bg-slate-50 rounded-xl border border-slate-200 p-4 overflow-auto">{datasheetResult ? <div className="prose prose-sm max-w-none text-slate-800 whitespace-pre-line animate-fade-in">{datasheetResult}</div> : <div className="text-center text-slate-400 mt-10">Введите название и нажмите <strong>AI Info</strong></div>}</div>
-          </div>
-        )}
-      </div>
+       {/* Parts List */}
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {parts
+             .filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock))
+             .filter(p => inventoryFilterType === 'ALL' || p.type === inventoryFilterType)
+             .filter(p => inventoryFilterSubtype === 'ALL' || p.subtype === inventoryFilterSubtype)
+             .map(part => (
+             <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col relative group hover:border-blue-300 transition-all">
+                <div className="flex justify-between items-start mb-2">
+                   <div>
+                      <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1 block">{part.type} / {part.subtype}</span>
+                      <h4 className="font-bold text-slate-800">{part.name}</h4>
+                   </div>
+                   <button onClick={() => togglePartStockStatus(part.id)} className={`p-1 rounded ${part.inStock ? 'text-green-500 hover:bg-green-50' : 'text-orange-500 hover:bg-orange-50'}`} title={part.inStock ? "В наличии -> Купить" : "Купить -> В наличии"}>
+                      {part.inStock ? <CheckCircle className="w-5 h-5" /> : <ShoppingCart className="w-5 h-5" />}
+                   </button>
+                </div>
+                <div className="mt-auto flex items-center justify-between pt-3 border-t border-slate-100">
+                   <div className="flex items-center gap-3">
+                      <button onClick={() => updatePartQuantity(part.id, -1)} className="w-6 h-6 flex items-center justify-center bg-slate-100 rounded text-slate-600 hover:bg-slate-200"><Minus className="w-3 h-3" /></button>
+                      <span className="font-mono font-bold w-6 text-center">{part.quantity}</span>
+                      <button onClick={() => updatePartQuantity(part.id, 1)} className="w-6 h-6 flex items-center justify-center bg-slate-100 rounded text-slate-600 hover:bg-slate-200"><Plus className="w-3 h-3" /></button>
+                   </div>
+                   <button onClick={() => deletePart(part.id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                </div>
+             </div>
+          ))}
+       </div>
     </div>
   );
-  
-  const renderKnowledgeBaseView = () => (
-     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in transform-gpu">
-        <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BrainCircuit className="w-8 h-8 text-indigo-600" />База знаний мастера</h2>
-        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-           {KNOWLEDGE_BASE.map((section, idx) => {
-              const isExpanded = expandedKnowledge === section.title;
-              return (
-                 <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 hover:shadow-md will-change-transform">
-                    <button 
-                       onClick={() => setExpandedKnowledge(isExpanded ? null : section.title)}
-                       className={`w-full p-4 flex items-center justify-between text-left transition-colors ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
-                    >
-                       <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-lg shadow-sm bg-white`}>{section.icon}</div>
-                          <div>
-                             <h3 className="font-bold text-lg text-slate-800">{section.title}</h3>
-                             {section.description && <p className="text-xs text-slate-500">{section.description}</p>}
-                          </div>
-                       </div>
-                       {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-                    </button>
-                    
-                    {isExpanded && (
-                       <div className="p-4 bg-white border-t border-slate-100 animate-slide-down origin-top">
-                          <div className="grid gap-6">
-                             {section.issues.map((item, i) => (
-                                <div key={i} className="flex gap-3">
-                                   <div className="mt-1 flex-shrink-0">
-                                      <AlertCircle className="w-5 h-5 text-red-500" />
-                                   </div>
-                                   <div className="flex-1">
-                                      <h4 className="font-bold text-slate-800 text-sm mb-1">{item.problem}</h4>
-                                      <div className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 hover:bg-slate-100 transition-colors">
-                                         <span className="font-semibold text-slate-700">Решение: </span>
-                                         {item.solution}
-                                      </div>
-                                   </div>
-                                </div>
-                             ))}
-                          </div>
-                       </div>
-                    )}
-                 </div>
-              );
-           })}
-        </div>
-     </div>
+
+  const renderAiChatView = () => (
+    <div className="flex flex-col h-[calc(100vh-64px)] md:h-screen p-4 md:p-8 max-w-4xl mx-auto pb-24 md:pb-8">
+       <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-2 mb-6"><Bot className="w-8 h-8 text-indigo-600" />AI Ассистент</h2>
+       <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+          <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50">
+             {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                   <div className={`max-w-[80%] p-3 rounded-xl shadow-sm text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'}`}>
+                      {msg.role === 'model' && <Bot className="w-4 h-4 mb-1 text-indigo-500 inline mr-2" />}
+                      {msg.text}
+                   </div>
+                </div>
+             ))}
+             {isChatLoading && <div className="flex justify-start"><div className="bg-white p-3 rounded-xl border border-slate-200 rounded-bl-none flex items-center gap-2 text-slate-500 text-sm"><RefreshCw className="w-3 h-3 animate-spin" /> Печатает...</div></div>}
+          </div>
+          <div className="p-4 bg-white border-t border-slate-200 flex gap-2">
+             <input type="text" className="flex-1 border border-slate-300 rounded-lg px-4 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 transition-all" placeholder="Спросите про аналоги, диагностику или схемы..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} />
+             <button onClick={handleSendMessage} disabled={isChatLoading || !chatInput.trim()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"><ArrowRight className="w-5 h-5" /></button>
+          </div>
+       </div>
+    </div>
   );
 
-  const renderAIChat = () => (
-    <div className="h-[calc(100vh-80px)] md:h-full flex flex-col bg-slate-50 pb-safe animate-fade-in transform-gpu">
-      <div className="p-4 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Bot className="w-6 h-6 text-purple-600" />AI Помощник</h2></div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">{chatMessages.map((msg, idx) => (<div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}><div className={`max-w-[85%] rounded-2xl p-3 shadow-sm text-sm md:text-base ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'}`}>{msg.text.split('\n').map((line, i) => <p key={i} className="mb-1">{line}</p>)}</div></div>))}{isChatLoading && <div className="flex justify-start"><div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm"><div className="flex gap-1"><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div></div></div></div>}</div>
-      <div className="p-3 bg-white border-t border-slate-200"><div className="flex gap-2"><input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Спросить..." className="flex-1 p-3 border border-slate-300 rounded-xl outline-none focus:border-purple-500 transition-colors" disabled={isChatLoading} /><button onClick={handleSendMessage} disabled={isChatLoading || !chatInput.trim()} className="bg-purple-600 disabled:bg-slate-300 text-white p-3 rounded-xl transition-all active:scale-95 duration-200 will-change-transform"><ArrowRight className="w-6 h-6" /></button></div></div>
+  const renderReferencesView = () => (
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+       <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-2 mb-6"><BookOpen className="w-8 h-8 text-teal-600" />Справочники</h2>
+       
+       <div className="flex flex-wrap gap-2 mb-6">
+          <button onClick={() => setActiveRefTab('esr')} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeRefTab === 'esr' ? 'bg-teal-100 text-teal-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Таблицы ESR</button>
+          <button onClick={() => setActiveRefTab('smd')} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeRefTab === 'smd' ? 'bg-teal-100 text-teal-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>SMD Коды</button>
+          <button onClick={() => setActiveRefTab('divider')} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeRefTab === 'divider' ? 'bg-teal-100 text-teal-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Делитель / LED</button>
+          <button onClick={() => setActiveRefTab('datasheet')} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeRefTab === 'datasheet' ? 'bg-teal-100 text-teal-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Даташиты (AI)</button>
+       </div>
+
+       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-h-[500px]">
+          {activeRefTab === 'esr' && (
+             <div>
+                <div className="flex justify-between items-center mb-4">
+                   <h3 className="text-xl font-bold">Таблица ESR электролитических конденсаторов</h3>
+                   <div className="flex bg-slate-100 rounded p-1">
+                      <button onClick={() => setEsrMode('std')} className={`px-3 py-1 rounded text-xs font-bold ${esrMode === 'std' ? 'bg-white shadow' : 'text-slate-500'}`}>Стандарт</button>
+                      <button onClick={() => setEsrMode('low')} className={`px-3 py-1 rounded text-xs font-bold ${esrMode === 'low' ? 'bg-white shadow' : 'text-slate-500'}`}>Low ESR</button>
+                   </div>
+                </div>
+                <div className="overflow-x-auto">
+                   <table className="w-full text-sm text-left border-collapse">
+                      <thead>
+                         <tr className="bg-slate-50 text-slate-600">
+                            <th className="p-2 border">Емкость</th><th className="p-2 border">10V</th><th className="p-2 border">16V</th><th className="p-2 border">25V</th><th className="p-2 border">63V</th>
+                         </tr>
+                      </thead>
+                      <tbody>
+                         {(esrMode === 'std' ? ESR_DATA_STD : ESR_DATA_LOW).map((row, i) => (
+                            <tr key={i} className="hover:bg-slate-50 border-b">
+                               <td className="p-2 border font-bold">{row.cap}</td><td className="p-2 border font-mono">{row.v10}</td><td className="p-2 border font-mono">{row.v16}</td><td className="p-2 border font-mono">{row.v25}</td><td className="p-2 border font-mono">{row.v63}</td>
+                            </tr>
+                         ))}
+                      </tbody>
+                   </table>
+                </div>
+             </div>
+          )}
+
+          {activeRefTab === 'smd' && (
+             <div className="max-w-md mx-auto text-center py-10">
+                <h3 className="text-xl font-bold mb-6">Калькулятор SMD резисторов</h3>
+                <input type="text" className="w-full text-4xl text-center font-mono border-2 border-slate-300 rounded-lg p-4 uppercase tracking-widest mb-6 focus:border-teal-500 outline-none" placeholder="103" maxLength={4} value={smdCode} onChange={(e) => setSmdCode(e.target.value)} />
+                <div className="text-5xl font-bold text-teal-600 mb-2">{calculateSMD(smdCode)}</div>
+                <div className="text-slate-400 text-sm">Поддерживает 3-х и 4-х значную маркировку, а также R (точка)</div>
+             </div>
+          )}
+
+          {activeRefTab === 'divider' && (
+             <div className="grid md:grid-cols-2 gap-10">
+                <div>
+                   <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Calculator className="w-5 h-5"/> Делитель напряжения</h3>
+                   <div className="space-y-4">
+                      <div className="flex gap-2 items-center"><label className="w-16 text-sm font-bold">Vin (V)</label><input type="number" className="border p-2 rounded w-full" value={dividerValues.vin} onChange={e => setDividerValues({...dividerValues, vin: Number(e.target.value)})} /></div>
+                      <div className="flex gap-2 items-center"><label className="w-16 text-sm font-bold">R1 (Ω)</label><input type="number" className="border p-2 rounded w-full" value={dividerValues.r1} onChange={e => setDividerValues({...dividerValues, r1: Number(e.target.value)})} /></div>
+                      <div className="flex gap-2 items-center"><label className="w-16 text-sm font-bold">R2 (Ω)</label><input type="number" className="border p-2 rounded w-full" value={dividerValues.r2} onChange={e => setDividerValues({...dividerValues, r2: Number(e.target.value)})} /></div>
+                      <div className="bg-slate-100 p-4 rounded text-center"><div className="text-xs text-slate-500 uppercase">Vout</div><div className="text-2xl font-bold text-slate-800">{calculateDividerVout()} V</div></div>
+                   </div>
+                </div>
+                <div>
+                   <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Lightbulb className="w-5 h-5"/> Резистор для LED</h3>
+                   <div className="space-y-4">
+                      <div className="flex gap-2 items-center"><label className="w-24 text-sm font-bold">Vпит (V)</label><input type="number" className="border p-2 rounded w-full" value={ledValues.vsource} onChange={e => setLedValues({...ledValues, vsource: Number(e.target.value)})} /></div>
+                      <div className="flex gap-2 items-center"><label className="w-24 text-sm font-bold">Vled (V)</label><input type="number" className="border p-2 rounded w-full" value={ledValues.vled} onChange={e => setLedValues({...ledValues, vled: Number(e.target.value)})} /></div>
+                      <div className="flex gap-2 items-center"><label className="w-24 text-sm font-bold">I (mA)</label><input type="number" className="border p-2 rounded w-full" value={ledValues.current} onChange={e => setLedValues({...ledValues, current: Number(e.target.value)})} /></div>
+                      <div className="bg-slate-100 p-4 rounded text-center flex justify-around">
+                         <div><div className="text-xs text-slate-500 uppercase">R (Ohm)</div><div className="text-2xl font-bold text-slate-800">{calculateLedResistor().r} Ω</div></div>
+                         <div><div className="text-xs text-slate-500 uppercase">Power (W)</div><div className="text-2xl font-bold text-slate-800">{calculateLedResistor().p} W</div></div>
+                      </div>
+                   </div>
+                </div>
+             </div>
+          )}
+
+          {activeRefTab === 'datasheet' && (
+             <div>
+                <div className="flex gap-2 mb-6">
+                   <input type="text" className="flex-1 border-2 border-slate-300 rounded-lg px-4 py-2 outline-none focus:border-teal-500 font-mono uppercase" placeholder="Введите маркировку (напр. IRF3205)" value={datasheetQuery} onChange={(e) => setDatasheetQuery(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleDatasheetSearch()} />
+                   <button onClick={handleDatasheetSearch} disabled={isDatasheetLoading} className="bg-teal-600 text-white px-6 rounded-lg font-bold hover:bg-teal-700 transition-colors">{isDatasheetLoading ? <RefreshCw className="w-5 h-5 animate-spin"/> : <Search className="w-5 h-5"/>}</button>
+                </div>
+                {datasheetResult && (
+                   <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 relative animate-fade-in">
+                      <h4 className="font-bold text-lg mb-2">Результат AI поиска:</h4>
+                      <div className="prose prose-sm text-slate-700 whitespace-pre-wrap">{datasheetResult}</div>
+                      <div className="mt-4 pt-4 border-t border-slate-200">
+                         <button onClick={openAllDatasheet} className="text-blue-600 hover:underline flex items-center gap-1 text-sm font-bold"><ExternalLink className="w-4 h-4"/> Искать PDF на AllDatasheet</button>
+                      </div>
+                   </div>
+                )}
+             </div>
+          )}
+       </div>
+    </div>
+  );
+
+  const renderKnowledgeView = () => (
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+       <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-2 mb-2"><BrainCircuit className="w-8 h-8 text-purple-600" />База знаний дефектов</h2>
+       <p className="text-slate-500 mb-8">Типовые неисправности и методы решения, собранные сообществом.</p>
+       
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {KNOWLEDGE_BASE.map((item, i) => (
+             <div key={i} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
+                <div className="p-6 cursor-pointer" onClick={() => setExpandedKnowledge(expandedKnowledge === item.title ? null : item.title)}>
+                   <div className="flex items-start justify-between mb-4">
+                      <div className="p-3 bg-slate-50 rounded-lg">{item.icon}</div>
+                      {expandedKnowledge === item.title ? <ChevronUp className="w-5 h-5 text-slate-400"/> : <ChevronDown className="w-5 h-5 text-slate-400"/>}
+                   </div>
+                   <h3 className="text-xl font-bold text-slate-800 mb-1">{item.title}</h3>
+                   <p className="text-sm text-slate-500">{item.description}</p>
+                </div>
+                {expandedKnowledge === item.title && (
+                   <div className="px-6 pb-6 bg-slate-50 border-t border-slate-100 animate-slide-down">
+                      <div className="space-y-4 pt-4">
+                         {item.issues.map((issue, idx) => (
+                            <div key={idx} className="bg-white p-3 rounded border border-slate-200">
+                               <div className="flex items-start gap-2 mb-2">
+                                  <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                                  <span className="font-bold text-sm text-slate-800">{issue.problem}</span>
+                               </div>
+                               <div className="flex items-start gap-2 pl-6">
+                                  <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                                  <span className="text-sm text-slate-600 leading-relaxed">{issue.solution}</span>
+                               </div>
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+                )}
+             </div>
+          ))}
+       </div>
     </div>
   );
 
   return (
-    <div className="flex bg-slate-50 min-h-screen font-sans text-slate-900">
+    <div className="flex bg-slate-100 min-h-screen font-sans text-slate-900">
       {renderSidebar()}
-      <main className="flex-1 ml-0 md:ml-64 print:ml-0 min-h-screen overflow-auto print:overflow-visible">
-        {view === 'repair' && renderRepairView()}
-        {view === 'planning' && renderPlanningView()}
-        {view === 'inventory' && renderInventoryView()}
-        {view === 'references' && renderReferencesView()}
-        {view === 'knowledge' && renderKnowledgeBaseView()}
-        {view === 'print' && <Printables devices={devices.filter(d => d.status !== DeviceStatus.ISSUED)} />}
-        {view === 'ai_chat' && renderAIChat()}
+      <main className="flex-1 md:ml-64 relative min-h-screen pb-20 md:pb-0">
+         {view === 'repair' && renderRepairView()}
+         {view === 'planning' && renderPlanningView()}
+         {view === 'inventory' && renderInventoryView()}
+         {view === 'print' && <Printables devices={sortedDevices} />}
+         {view === 'ai_chat' && renderAiChatView()}
+         {view === 'references' && renderReferencesView()}
+         {view === 'knowledge' && renderKnowledgeView()}
       </main>
     </div>
   );
-}
-
-const NavButtons = ({ current, setView, devicesCount }: any) => (
-  <>
-    <button onClick={() => setView('repair')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'repair' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Clock className="w-5 h-5" /><span>В ремонте</span>{devicesCount > 0 && <span className="ml-auto bg-slate-700 text-xs px-2 py-0.5 rounded-full">{devicesCount}</span>}</button>
-    <button onClick={() => setView('planning')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'planning' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><CalendarCheck className="w-5 h-5" /><span>План</span></button>
-    <button onClick={() => setView('inventory')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'inventory' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Package className="w-5 h-5" /><span>Склад</span></button>
-    <button onClick={() => setView('references')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'references' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><BookOpen className="w-5 h-5" /><span>Справочники</span></button>
-    <button onClick={() => setView('knowledge')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'knowledge' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><BrainCircuit className="w-5 h-5" /><span>База Знаний</span></button>
-    <button onClick={() => setView('print')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'print' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Printer className="w-5 h-5" /><span>Печать</span></button>
-    <button onClick={() => setView('ai_chat')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'ai_chat' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Bot className="w-5 h-5" /><span>AI</span></button>
-  </>
-);
-
-const MobileNavButton = ({ view, current, setView, icon, label, badge }: any) => (
-  <button onClick={() => setView(view)} className={`flex flex-col items-center gap-1 p-2 rounded-lg relative transition-all duration-200 active:scale-90 min-h-[44px] min-w-[44px] justify-center will-change-transform ${current === view ? 'text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}><div className="relative">{icon}{badge > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full animate-bounce">{badge}</span>}</div><span className="text-[10px] font-medium">{label}</span></button>
-);
+};
 
 export default App;
