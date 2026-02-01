@@ -449,7 +449,7 @@ const WorkshopRobot = () => {
   if (!isVisible) return null;
 
   return (
-    <div className="fixed bottom-4 left-64 z-50 p-4 w-64 animate-fade-in-up hidden md:block">
+    <div className="fixed bottom-4 left-64 z-50 p-4 w-64 animate-fade-in-up hidden md:block will-change-transform transform-gpu">
       <div className="relative bg-white border-2 border-slate-800 rounded-xl p-3 shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-xl">
          <button onClick={() => setIsVisible(false)} className="absolute -top-2 -right-2 bg-slate-200 rounded-full p-1 hover:bg-slate-300 transition-colors"><X className="w-3 h-3"/></button>
          <div className="absolute -left-12 bottom-0 w-12 h-12">
@@ -853,10 +853,10 @@ const App: React.FC = () => {
 
   const renderSidebar = () => (
     <>
-      <div className="hidden md:flex w-64 bg-slate-900 text-slate-100 flex-col h-screen fixed left-0 top-0 overflow-y-auto no-print z-10 shadow-xl">
+      <div className="hidden md:flex w-64 bg-slate-900 text-slate-100 flex-col h-screen fixed left-0 top-0 overflow-y-auto no-print z-10 shadow-xl transform-gpu">
         <div className="p-6">
           <h1 className="text-2xl font-bold flex items-center gap-2 text-blue-400"><Wrench className="w-8 h-8" />Мастерская</h1>
-          <button onClick={handleManualConnect} className="flex items-center gap-2 mt-4 text-xs bg-slate-800 py-1 px-2 rounded cursor-pointer hover:bg-slate-700 transition-colors w-full active:scale-95 duration-150">
+          <button onClick={handleManualConnect} className="flex items-center gap-2 mt-4 text-xs bg-slate-800 py-1 px-2 rounded cursor-pointer hover:bg-slate-700 transition-colors w-full active:scale-95 duration-150 will-change-transform">
              {storageMode === 'cloud' ? <span className="text-green-400 flex items-center gap-1 font-bold"><Cloud className="w-3 h-3"/> Vercel DB</span> : <span className="text-orange-400 flex items-center gap-1 font-bold"><CloudOff className="w-3 h-3"/> Local Mode</span>}
              {isSyncing ? <RefreshCw className="w-3 h-3 ml-auto animate-spin text-slate-400" /> : <span className="ml-auto text-slate-500 text-[10px]">{storageMode === 'cloud' ? 'Connected' : 'Connect'}</span>}
           </button>
@@ -865,7 +865,7 @@ const App: React.FC = () => {
         <WorkshopRobot />
         <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">&copy; 2025 Workshop Pro</div>
       </div>
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-slate-900/90 backdrop-blur-md text-slate-100 flex justify-around items-center p-3 z-50 border-t border-slate-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-slate-900/90 backdrop-blur-md text-slate-100 flex justify-around items-center p-3 z-50 border-t border-slate-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] transform-gpu">
         <MobileNavButton view="repair" current={view} setView={setView} icon={<Clock className="w-6 h-6" />} label="Ремонт" badge={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} />
         <MobileNavButton view="planning" current={view} setView={setView} icon={<CalendarCheck className="w-6 h-6" />} label="План" />
         <MobileNavButton view="inventory" current={view} setView={setView} icon={<Package className="w-6 h-6" />} label="Склад" />
@@ -879,7 +879,7 @@ const App: React.FC = () => {
     const plannedDevices = sortedDevices.filter(d => d.isPlanned && d.status !== DeviceStatus.ISSUED);
     
     return (
-        <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+        <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in transform-gpu">
            <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl md:text-3xl font-bold text-slate-800 flex items-center gap-2"><CalendarCheck className="w-8 h-8 text-blue-600" />План работ на завтра</h2>
               <span className="text-xl font-bold text-slate-500">{plannedDevices.length} задач</span>
@@ -894,8 +894,8 @@ const App: React.FC = () => {
               ) : (
                   <div className="space-y-4">
                       {plannedDevices.map(device => (
-                          <div key={device.id} className="flex items-center gap-4 p-4 border rounded-lg bg-slate-50 hover:bg-slate-100 transition-all hover:scale-[1.01] hover:shadow-md duration-200 cursor-default">
-                              <button onClick={() => toggleDevicePlan(device.id)} className="text-green-600 hover:scale-110 transition-transform active:scale-90"><CheckCircle className="w-6 h-6 fill-green-100" /></button>
+                          <div key={device.id} className="flex items-center gap-4 p-4 border rounded-lg bg-slate-50 hover:bg-slate-100 transition-all hover:scale-[1.01] hover:shadow-md duration-200 cursor-default will-change-transform">
+                              <button onClick={() => toggleDevicePlan(device.id)} className="text-green-600 hover:scale-110 transition-transform active:scale-90 will-change-transform"><CheckCircle className="w-6 h-6 fill-green-100" /></button>
                               <div className="flex-1">
                                   <div className="font-bold text-lg">{device.deviceModel}</div>
                                   <div className="text-sm text-slate-600">{device.issueDescription}</div>
@@ -925,15 +925,15 @@ const App: React.FC = () => {
       }), [devices]);
 
       return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in transform-gpu">
       {/* Статистика */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-6 text-center">
-          <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm transition-transform hover:-translate-y-0.5"><div className="text-xs text-slate-500 uppercase font-bold">Всего</div><div className="text-xl font-bold text-slate-800">{stats.total}</div></div>
-          <div className="bg-blue-50 p-2 rounded-lg border border-blue-100 transition-transform hover:-translate-y-0.5"><div className="text-xs text-blue-500 uppercase font-bold">Принято</div><div className="text-xl font-bold text-blue-700">{stats.received}</div></div>
-          <div className="bg-yellow-50 p-2 rounded-lg border border-yellow-100 transition-transform hover:-translate-y-0.5"><div className="text-xs text-yellow-600 uppercase font-bold">В работе</div><div className="text-xl font-bold text-yellow-800">{stats.inProgress}</div></div>
-          <div className="bg-orange-50 p-2 rounded-lg border border-orange-100 transition-transform hover:-translate-y-0.5"><div className="text-xs text-orange-600 uppercase font-bold">Ждут ЗИП</div><div className="text-xl font-bold text-orange-800">{stats.waiting}</div></div>
-          <div className="bg-green-50 p-2 rounded-lg border border-green-100 transition-transform hover:-translate-y-0.5"><div className="text-xs text-green-600 uppercase font-bold">Готовы</div><div className="text-xl font-bold text-green-800">{stats.ready}</div></div>
-          <div className="bg-gray-100 p-2 rounded-lg border border-gray-200 opacity-70 transition-transform hover:-translate-y-0.5"><div className="text-xs text-gray-500 uppercase font-bold">Выдано</div><div className="text-xl font-bold text-gray-700">{stats.issued}</div></div>
+          <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-slate-500 uppercase font-bold">Всего</div><div className="text-xl font-bold text-slate-800">{stats.total}</div></div>
+          <div className="bg-blue-50 p-2 rounded-lg border border-blue-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-blue-500 uppercase font-bold">Принято</div><div className="text-xl font-bold text-blue-700">{stats.received}</div></div>
+          <div className="bg-yellow-50 p-2 rounded-lg border border-yellow-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-yellow-600 uppercase font-bold">В работе</div><div className="text-xl font-bold text-yellow-800">{stats.inProgress}</div></div>
+          <div className="bg-orange-50 p-2 rounded-lg border border-orange-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-orange-600 uppercase font-bold">Ждут ЗИП</div><div className="text-xl font-bold text-orange-800">{stats.waiting}</div></div>
+          <div className="bg-green-50 p-2 rounded-lg border border-green-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-green-600 uppercase font-bold">Готовы</div><div className="text-xl font-bold text-green-800">{stats.ready}</div></div>
+          <div className="bg-gray-100 p-2 rounded-lg border border-gray-200 opacity-70 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-gray-500 uppercase font-bold">Выдано</div><div className="text-xl font-bold text-gray-700">{stats.issued}</div></div>
       </div>
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -947,14 +947,14 @@ const App: React.FC = () => {
              </select>
           </div>
         </div>
-        <button onClick={() => setShowAddDeviceModal(true)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 duration-200 hover:shadow-lg"><Plus className="w-5 h-5" />Принять</button>
+        <button onClick={() => setShowAddDeviceModal(true)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 duration-200 hover:shadow-lg will-change-transform"><Plus className="w-5 h-5" />Принять</button>
       </div>
       <div className="grid gap-4">
         {sortedDevices.length === 0 ? (
           <div className="text-center py-12 md:py-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"><Package className="w-12 h-12 md:w-16 md:h-16 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-lg">Нет устройств</p></div>
         ) : (
           sortedDevices.map((device) => (
-            <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
+            <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 transform-gpu will-change-transform">
               <div className="flex-1">
                 <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
                   <div className="flex items-center gap-2">
@@ -1010,7 +1010,7 @@ const App: React.FC = () => {
       </div>
       {showAddDeviceModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4 animate-fade-in">
-          <div className="bg-white rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl animate-slide-up md:animate-none">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl animate-slide-up md:animate-none transform-gpu will-change-transform">
             <h3 className="text-2xl font-bold mb-4 text-slate-800">Новое устройство</h3>
             <div className="space-y-4">
               <div><label className="text-sm font-medium text-slate-700">Модель</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.deviceModel || ''} onChange={e => setNewDevice({...newDevice, deviceModel: e.target.value})} /></div>
@@ -1056,7 +1056,7 @@ const App: React.FC = () => {
     });
 
     return (
-      <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in">
+      <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in transform-gpu">
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-4">Склад</h2>
         <div className="flex gap-2 mb-4 border-b border-slate-200">
           <button onClick={() => setInventoryTab('stock')} className={`flex-1 md:flex-none pb-2 px-4 font-medium transition-colors border-b-2 ${inventoryTab === 'stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>В Наличии</button>
@@ -1064,7 +1064,7 @@ const App: React.FC = () => {
         </div>
         
         {/* ADD PART FORM */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-4 flex flex-col gap-3 transition-shadow hover:shadow-md">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-4 flex flex-col gap-3 transition-shadow hover:shadow-md will-change-transform">
           <div className="flex flex-col md:flex-row gap-3">
             <select value={newPartType} onChange={(e) => setNewPartType(e.target.value as PartType)} className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm outline-none flex-1 font-medium focus:border-blue-500 transition-colors">{Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}</select>
             <select value={newPartSubtype} onChange={(e) => setNewPartSubtype(e.target.value)} className="p-3 border border-slate-300 rounded-lg bg-slate-50 text-sm outline-none flex-1 focus:border-blue-500 transition-colors"><option value="">-- Подкатегория --</option>{RADIO_SUBCATEGORIES[newPartType]?.map(st => <option key={st} value={st}>{st}</option>)}<option value="Другое">Другое</option></select>
@@ -1072,7 +1072,7 @@ const App: React.FC = () => {
           <div className="flex gap-2">
             <input type="text" placeholder={inventoryTab === 'stock' ? "Название (номинал, маркировка)..." : "Что купить..."} className="flex-[2] p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 transition-colors" value={newPartName} onChange={(e) => setNewPartName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPart()} />
             <input type="number" min="1" placeholder="Кол-во" className="w-20 p-3 border border-slate-300 rounded-lg outline-none text-center focus:border-blue-500 transition-colors" value={newPartQuantity} onChange={(e) => setNewPartQuantity(parseInt(e.target.value) || 1)} />
-            <button onClick={addPart} className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg font-bold flex items-center justify-center transition-all active:scale-95 duration-200 shadow-md"><Plus className="w-6 h-6" /></button>
+            <button onClick={addPart} className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-lg font-bold flex items-center justify-center transition-all active:scale-95 duration-200 shadow-md will-change-transform"><Plus className="w-6 h-6" /></button>
           </div>
         </div>
 
@@ -1105,7 +1105,7 @@ const App: React.FC = () => {
         {/* PARTS LIST */}
         <div className="flex-1 overflow-y-auto space-y-3 pb-20 md:pb-0">
           {displayedParts.map(part => (
-            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center gap-4 transition-all hover:shadow-md hover:-translate-y-0.5 duration-200">
+            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center gap-4 transition-all hover:shadow-md hover:-translate-y-0.5 duration-200 transform-gpu will-change-transform">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                    <span className="text-[10px] text-white bg-blue-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">{part.type}</span>
@@ -1133,7 +1133,7 @@ const App: React.FC = () => {
   };
 
   const renderReferencesView = () => (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in transform-gpu">
       <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BookOpen className="w-8 h-8 text-blue-600" />Справочники и Инструменты</h2>
       <div className="flex overflow-x-auto gap-2 mb-6 pb-2 no-scrollbar">
         <button onClick={() => setActiveRefTab('esr')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all active:scale-95 duration-200 ${activeRefTab === 'esr' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><Table className="w-4 h-4 inline mr-2" />ESR Таблица</button>
@@ -1201,8 +1201,8 @@ const App: React.FC = () => {
             <div className="text-center mb-6"><div className="inline-block p-3 bg-purple-100 rounded-full mb-2 animate-bounce"><Search className="w-8 h-8 text-purple-600" /></div><h3 className="text-xl font-bold text-slate-800">Умный поиск Datasheet</h3><p className="text-slate-500">Введите маркировку (напр. NE555, IRF3205)</p></div>
             <div className="flex gap-2 max-w-lg mx-auto w-full mb-6">
               <input type="text" value={datasheetQuery} onChange={(e) => setDatasheetQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleDatasheetSearch()} placeholder="Маркировка компонента..." className="flex-1 p-3 border border-slate-300 rounded-lg outline-none focus:border-purple-500 shadow-sm transition-colors" />
-              <button onClick={handleDatasheetSearch} disabled={isDatasheetLoading || !datasheetQuery} className="bg-purple-600 text-white px-4 rounded-lg font-bold hover:bg-purple-700 disabled:opacity-50 transition-all active:scale-95 duration-200 shadow-md flex items-center gap-2">{isDatasheetLoading ? <RefreshCw className="w-5 h-5 animate-spin"/> : 'AI Info'}</button>
-              <button onClick={openAllDatasheet} disabled={!datasheetQuery} className="bg-orange-500 text-white px-4 rounded-lg font-bold hover:bg-orange-600 disabled:opacity-50 transition-all active:scale-95 duration-200 shadow-md flex items-center gap-2"><ExternalLink className="w-5 h-5"/>PDF</button>
+              <button onClick={handleDatasheetSearch} disabled={isDatasheetLoading || !datasheetQuery} className="bg-purple-600 text-white px-4 rounded-lg font-bold hover:bg-purple-700 disabled:opacity-50 transition-all active:scale-95 duration-200 shadow-md flex items-center gap-2 will-change-transform"><RefreshCw className={`w-5 h-5 ${isDatasheetLoading ? 'animate-spin' : ''}`}/> {isDatasheetLoading ? '' : 'AI Info'}</button>
+              <button onClick={openAllDatasheet} disabled={!datasheetQuery} className="bg-orange-500 text-white px-4 rounded-lg font-bold hover:bg-orange-600 disabled:opacity-50 transition-all active:scale-95 duration-200 shadow-md flex items-center gap-2 will-change-transform"><ExternalLink className="w-5 h-5"/>PDF</button>
             </div>
             <div className="flex-1 bg-slate-50 rounded-xl border border-slate-200 p-4 overflow-auto">{datasheetResult ? <div className="prose prose-sm max-w-none text-slate-800 whitespace-pre-line animate-fade-in">{datasheetResult}</div> : <div className="text-center text-slate-400 mt-10">Введите название и нажмите <strong>AI Info</strong></div>}</div>
           </div>
@@ -1212,13 +1212,13 @@ const App: React.FC = () => {
   );
   
   const renderKnowledgeBaseView = () => (
-     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in">
+     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in transform-gpu">
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BrainCircuit className="w-8 h-8 text-indigo-600" />База знаний мастера</h2>
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
            {KNOWLEDGE_BASE.map((section, idx) => {
               const isExpanded = expandedKnowledge === section.title;
               return (
-                 <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 hover:shadow-md">
+                 <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 hover:shadow-md will-change-transform">
                     <button 
                        onClick={() => setExpandedKnowledge(isExpanded ? null : section.title)}
                        className={`w-full p-4 flex items-center justify-between text-left transition-colors ${isExpanded ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
@@ -1261,10 +1261,10 @@ const App: React.FC = () => {
   );
 
   const renderAIChat = () => (
-    <div className="h-[calc(100vh-80px)] md:h-full flex flex-col bg-slate-50 pb-safe animate-fade-in">
+    <div className="h-[calc(100vh-80px)] md:h-full flex flex-col bg-slate-50 pb-safe animate-fade-in transform-gpu">
       <div className="p-4 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Bot className="w-6 h-6 text-purple-600" />AI Помощник</h2></div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4">{chatMessages.map((msg, idx) => (<div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}><div className={`max-w-[85%] rounded-2xl p-3 shadow-sm text-sm md:text-base ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'}`}>{msg.text.split('\n').map((line, i) => <p key={i} className="mb-1">{line}</p>)}</div></div>))}{isChatLoading && <div className="flex justify-start"><div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm"><div className="flex gap-1"><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div></div></div></div>}</div>
-      <div className="p-3 bg-white border-t border-slate-200"><div className="flex gap-2"><input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Спросить..." className="flex-1 p-3 border border-slate-300 rounded-xl outline-none focus:border-purple-500 transition-colors" disabled={isChatLoading} /><button onClick={handleSendMessage} disabled={isChatLoading || !chatInput.trim()} className="bg-purple-600 disabled:bg-slate-300 text-white p-3 rounded-xl transition-all active:scale-95 duration-200"><ArrowRight className="w-6 h-6" /></button></div></div>
+      <div className="p-3 bg-white border-t border-slate-200"><div className="flex gap-2"><input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Спросить..." className="flex-1 p-3 border border-slate-300 rounded-xl outline-none focus:border-purple-500 transition-colors" disabled={isChatLoading} /><button onClick={handleSendMessage} disabled={isChatLoading || !chatInput.trim()} className="bg-purple-600 disabled:bg-slate-300 text-white p-3 rounded-xl transition-all active:scale-95 duration-200 will-change-transform"><ArrowRight className="w-6 h-6" /></button></div></div>
     </div>
   );
 
@@ -1286,18 +1286,18 @@ const App: React.FC = () => {
 
 const NavButtons = ({ current, setView, devicesCount }: any) => (
   <>
-    <button onClick={() => setView('repair')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 ${current === 'repair' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Clock className="w-5 h-5" /><span>В ремонте</span>{devicesCount > 0 && <span className="ml-auto bg-slate-700 text-xs px-2 py-0.5 rounded-full">{devicesCount}</span>}</button>
-    <button onClick={() => setView('planning')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 ${current === 'planning' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><CalendarCheck className="w-5 h-5" /><span>План</span></button>
-    <button onClick={() => setView('inventory')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 ${current === 'inventory' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Package className="w-5 h-5" /><span>Склад</span></button>
-    <button onClick={() => setView('references')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 ${current === 'references' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><BookOpen className="w-5 h-5" /><span>Справочники</span></button>
-    <button onClick={() => setView('knowledge')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 ${current === 'knowledge' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><BrainCircuit className="w-5 h-5" /><span>База Знаний</span></button>
-    <button onClick={() => setView('print')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 ${current === 'print' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Printer className="w-5 h-5" /><span>Печать</span></button>
-    <button onClick={() => setView('ai_chat')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 ${current === 'ai_chat' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Bot className="w-5 h-5" /><span>AI</span></button>
+    <button onClick={() => setView('repair')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'repair' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Clock className="w-5 h-5" /><span>В ремонте</span>{devicesCount > 0 && <span className="ml-auto bg-slate-700 text-xs px-2 py-0.5 rounded-full">{devicesCount}</span>}</button>
+    <button onClick={() => setView('planning')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'planning' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><CalendarCheck className="w-5 h-5" /><span>План</span></button>
+    <button onClick={() => setView('inventory')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'inventory' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Package className="w-5 h-5" /><span>Склад</span></button>
+    <button onClick={() => setView('references')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'references' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><BookOpen className="w-5 h-5" /><span>Справочники</span></button>
+    <button onClick={() => setView('knowledge')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'knowledge' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><BrainCircuit className="w-5 h-5" /><span>База Знаний</span></button>
+    <button onClick={() => setView('print')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'print' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Printer className="w-5 h-5" /><span>Печать</span></button>
+    <button onClick={() => setView('ai_chat')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 active:scale-95 will-change-transform ${current === 'ai_chat' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Bot className="w-5 h-5" /><span>AI</span></button>
   </>
 );
 
 const MobileNavButton = ({ view, current, setView, icon, label, badge }: any) => (
-  <button onClick={() => setView(view)} className={`flex flex-col items-center gap-1 p-2 rounded-lg relative transition-all duration-200 active:scale-90 min-h-[44px] min-w-[44px] justify-center ${current === view ? 'text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}><div className="relative">{icon}{badge > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full animate-bounce">{badge}</span>}</div><span className="text-[10px] font-medium">{label}</span></button>
+  <button onClick={() => setView(view)} className={`flex flex-col items-center gap-1 p-2 rounded-lg relative transition-all duration-200 active:scale-90 min-h-[44px] min-w-[44px] justify-center will-change-transform ${current === view ? 'text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}><div className="relative">{icon}{badge > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full animate-bounce">{badge}</span>}</div><span className="text-[10px] font-medium">{label}</span></button>
 );
 
 export default App;
