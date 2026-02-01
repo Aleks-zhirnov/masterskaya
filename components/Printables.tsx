@@ -387,8 +387,9 @@ export const Printables: React.FC<PrintablesProps> = ({ devices }) => {
       </div>
 
       {/* Preview Area (Visible on Screen) & Print Area */}
+      {/* Added ID printable-root for targeted print styles */}
       <div className="flex-1 p-4 md:p-8 overflow-auto print:p-0 print:overflow-visible flex justify-center bg-gray-100 print:bg-white print:block">
-        <div className="w-[210mm] min-h-[297mm] bg-white shadow-xl p-[10mm] print:shadow-none print:p-0 print:w-full print:min-h-0 transition-all origin-top scale-90 md:scale-100 print:scale-100">
+        <div id="printable-root" className="w-[210mm] min-h-[297mm] bg-white shadow-xl p-[10mm] print:shadow-none print:p-0 print:w-full print:min-h-0 transition-all origin-top scale-90 md:scale-100 print:scale-100">
           {printMode === 'seals' && renderSeals()}
           {printMode === 'tags' && renderTags()}
           {printMode === 'acts' && renderActs()}

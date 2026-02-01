@@ -449,7 +449,7 @@ const WorkshopRobot = () => {
   if (!isVisible) return null;
 
   return (
-    <div className="fixed bottom-4 left-64 z-50 p-4 w-64 animate-fade-in-up hidden md:block will-change-transform transform-gpu">
+    <div className="fixed bottom-4 left-64 z-50 p-4 w-64 animate-fade-in-up hidden md:block will-change-transform transform-gpu no-print">
       <div className="relative bg-white border-2 border-slate-800 rounded-xl p-3 shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-xl">
          <button onClick={() => setIsVisible(false)} className="absolute -top-2 -right-2 bg-slate-200 rounded-full p-1 hover:bg-slate-300 transition-colors"><X className="w-3 h-3"/></button>
          <div className="absolute -left-12 bottom-0 w-12 h-12">
@@ -921,7 +921,7 @@ const App: React.FC = () => {
           </button>
         </div>
         <nav className="flex-1 px-4 space-y-2"><NavButtons current={view} setView={setView} devicesCount={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} /></nav>
-        <WorkshopRobot />
+        {/* Robot moved out of here to main App component to fix z-index clipping */}
         <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">&copy; 2025 Workshop Pro</div>
       </div>
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-slate-900/90 backdrop-blur-md text-slate-100 flex justify-around items-center p-3 z-50 border-t border-slate-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] transform-gpu">
@@ -1347,6 +1347,9 @@ const App: React.FC = () => {
 
   return (
     <div className="flex bg-slate-100 min-h-screen font-sans text-slate-900">
+      {/* WorkshopRobot MOVED HERE to be outside of the sidebar container context */}
+      <WorkshopRobot />
+      
       {renderSidebar()}
       <main className="flex-1 md:ml-64 relative min-h-screen pb-20 md:pb-0">
          {view === 'repair' && renderRepairView()}

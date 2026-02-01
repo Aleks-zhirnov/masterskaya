@@ -66,19 +66,42 @@
       .will-change-transform {
         will-change: transform;
       }
+      
+      /* --- СТИЛИ ПЕЧАТИ --- */
       @media print {
+        /* Скрываем всё по умолчанию */
+        body * {
+          visibility: hidden;
+        }
+        
+        /* Делаем видимым только контейнер с документом и его содержимое */
+        #printable-root, #printable-root * {
+          visibility: visible;
+        }
+
+        /* Позиционируем документ поверх всего */
+        #printable-root {
+          position: fixed;
+          left: 0;
+          top: 0;
+          width: 100vw;
+          height: 100vh;
+          margin: 0;
+          padding: 0;
+          z-index: 9999;
+          background: white;
+        }
+
+        /* Убираем отступы страницы браузера */
+        @page {
+          margin: 0;
+          size: auto;
+        }
+
+        /* Скрываем элементы интерфейса, если они случайно попали */
         .no-print {
           display: none !important;
         }
-        .print-only {
-          display: block !important;
-        }
-        body {
-          background-color: white;
-        }
-      }
-      .print-only {
-        display: none;
       }
     </style>
   <script type="importmap">
