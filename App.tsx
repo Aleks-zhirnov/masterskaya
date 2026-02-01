@@ -38,7 +38,10 @@ import {
   CupSoda,
   Activity,
   Disc,
-  Scissors
+  Scissors,
+  CalendarCheck,
+  BarChart3,
+  ListFilter
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
 import { generateWorkshopAdvice } from './services/ai';
@@ -427,6 +430,40 @@ const api = {
   }
 };
 
+// --- COMPONENTS ---
+
+const WorkshopRobot = () => {
+  const [fact, setFact] = useState("Загружаю интересный факт...");
+  const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    const fetchFact = async () => {
+      // Пытаемся получить факт от AI
+      const prompt = "Расскажи один очень короткий, но интересный и малоизвестный технический факт или лайфхак для инженера-электронщика. Не более 2 предложений. В конце добавь веселый смайлик.";
+      const response = await generateWorkshopAdvice(prompt);
+      setFact(response);
+    };
+    fetchFact();
+  }, []);
+
+  if (!isVisible) return null;
+
+  return (
+    <div className="fixed bottom-4 left-64 z-50 p-4 w-64 animate-fade-in-up hidden md:block">
+      <div className="relative bg-white border-2 border-slate-800 rounded-xl p-3 shadow-lg">
+         <button onClick={() => setIsVisible(false)} className="absolute -top-2 -right-2 bg-slate-200 rounded-full p-1 hover:bg-slate-300"><X className="w-3 h-3"/></button>
+         <div className="absolute -left-12 bottom-0 w-12 h-12">
+            <Bot className="w-12 h-12 text-indigo-600 animate-bounce" />
+         </div>
+         <div className="text-xs font-medium text-slate-700 italic">
+            "{fact}"
+         </div>
+         <div className="absolute -left-2 bottom-4 w-2 h-2 bg-white border-b border-l border-slate-800 transform rotate-45"></div>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   // --- STATE ---
   const [view, setView] = useState<ViewState>('repair');
@@ -443,6 +480,7 @@ const App: React.FC = () => {
   // UI State - Repair
   const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
   const [newDevice, setNewDevice] = useState<Partial<Device>>({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
+  const [sortMethod, setSortMethod] = useState<'date' | 'urgency' | 'status'>('urgency');
   
   // UI State - Inventory
   const [inventoryTab, setInventoryTab] = useState<'stock' | 'buy'>('stock');
@@ -493,23 +531,67 @@ const App: React.FC = () => {
       
       const cloudDevices = await api.getDevices();
       const cloudParts = await api.getParts();
-      setDevices(cloudDevices);
-      setParts(cloudParts);
-      return true;
+      
+      return { devices: cloudDevices, parts: cloudParts };
     } catch (e: any) {
       console.warn("Cloud connection check failed (falling back to local):", e.message);
-      return false;
+      return null;
     } finally {
       setIsSyncing(false);
     }
   };
 
+  const cleanupOldDevices = async (loadedDevices: Device[]) => {
+    const now = new Date();
+    const idsToDelete: string[] = [];
+    
+    loadedDevices.forEach(d => {
+       if (d.status === DeviceStatus.ISSUED && d.statusChangedAt) {
+          const changedAt = new Date(d.statusChangedAt);
+          const diffTime = Math.abs(now.getTime() - changedAt.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+          
+          if (diffDays > 4) {
+             idsToDelete.push(d.id);
+          }
+       }
+    });
+
+    if (idsToDelete.length > 0) {
+       console.log("Auto-deleting old issued devices:", idsToDelete);
+       // Удаляем из стейта
+       const remaining = loadedDevices.filter(d => !idsToDelete.includes(d.id));
+       setDevices(remaining);
+       
+       // Удаляем из БД/LocalStorage
+       if (storageMode === 'local') {
+          localStorage.setItem('workshop_devices', JSON.stringify(remaining));
+       } else {
+          // Последовательно удаляем, чтобы не грузить базу параллельными запросами
+          for (const id of idsToDelete) {
+             await api.deleteDevice(id);
+          }
+       }
+    }
+  };
+
   useEffect(() => {
     const initApp = async () => {
-      const connected = await tryConnectCloud();
-      if (!connected) {
+      const cloudData = await tryConnectCloud();
+      let currentDevices: Device[] = [];
+      
+      if (cloudData) {
+        setDevices(cloudData.devices);
+        setParts(cloudData.parts);
+        currentDevices = cloudData.devices;
+      } else {
         loadLocal();
+        const localDevs = localStorage.getItem('workshop_devices');
+        if (localDevs) currentDevices = JSON.parse(localDevs);
       }
+      
+      // Запускаем очистку старых заказов
+      await cleanupOldDevices(currentDevices);
       setInitLoaded(true);
     };
 
@@ -528,8 +610,10 @@ const App: React.FC = () => {
 
   const handleManualConnect = async () => {
     if (storageMode === 'cloud') return;
-    const success = await tryConnectCloud();
-    if (success) {
+    const cloudData = await tryConnectCloud();
+    if (cloudData) {
+      setDevices(cloudData.devices);
+      setParts(cloudData.parts);
       alert("Успешно подключено к базе данных Vercel!");
     } else {
       alert("Не удалось подключиться к базе данных. Проверьте консоль.");
@@ -579,14 +663,29 @@ const App: React.FC = () => {
   // --- ACTIONS ---
 
   const sortedDevices = [...devices].sort((a, b) => {
-     // Сначала сортируем по срочности (Critical -> High -> Normal)
-     const urgencyOrder = { [Urgency.CRITICAL]: 0, [Urgency.HIGH]: 1, [Urgency.NORMAL]: 2 };
-     const uDiff = urgencyOrder[a.urgency || Urgency.NORMAL] - urgencyOrder[b.urgency || Urgency.NORMAL];
-     if (uDiff !== 0) return uDiff;
+     if (sortMethod === 'urgency') {
+        const urgencyOrder = { [Urgency.CRITICAL]: 0, [Urgency.HIGH]: 1, [Urgency.NORMAL]: 2 };
+        const uDiff = urgencyOrder[a.urgency || Urgency.NORMAL] - urgencyOrder[b.urgency || Urgency.NORMAL];
+        if (uDiff !== 0) return uDiff;
+        return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
+     }
      
-     // Затем по дате (старые сверху)
+     if (sortMethod === 'status') {
+         // Сортировка по статусу, затем по дате
+         if (a.status !== b.status) return a.status.localeCompare(b.status);
+         return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
+     }
+
+     // Default: Date
      return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
   });
+
+  const getDaysInShop = (dateStr: string) => {
+      const start = new Date(dateStr);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - start.getTime());
+      return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+  };
 
   const addDevice = () => {
     if (!newDevice.clientName || !newDevice.deviceModel) return;
@@ -604,7 +703,8 @@ const App: React.FC = () => {
       dateReceived: dateReceived,
       status: DeviceStatus.RECEIVED,
       urgency: newDevice.urgency || Urgency.NORMAL,
-      notes: ''
+      notes: '',
+      statusChangedAt: new Date().toISOString()
     };
     persistDevice([...devices, device], device);
     setNewDevice({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
@@ -612,13 +712,25 @@ const App: React.FC = () => {
   };
 
   const updateDeviceStatus = (id: string, status: DeviceStatus) => {
-    const updatedDevices = devices.map(d => d.id === id ? { ...d, status } : d);
+    const updatedDevices = devices.map(d => {
+        if (d.id === id) {
+            // Если статус меняется на другой, обновляем таймштамп
+            // Если статус возвращается на старый, тоже обновляем таймштамп (счетчик обнуляется)
+            return { ...d, status, statusChangedAt: new Date().toISOString() };
+        }
+        return d;
+    });
     persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
   };
 
   const updateDeviceUrgency = (id: string, urgency: Urgency) => {
     const updatedDevices = devices.map(d => d.id === id ? { ...d, urgency } : d);
     persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
+  };
+  
+  const toggleDevicePlan = (id: string) => {
+      const updatedDevices = devices.map(d => d.id === id ? { ...d, isPlanned: !d.isPlanned } : d);
+      persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
   };
 
   const deleteDevice = (id: string) => {
@@ -750,25 +862,91 @@ const App: React.FC = () => {
              {isSyncing ? <RefreshCw className="w-3 h-3 ml-auto animate-spin text-slate-400" /> : <span className="ml-auto text-slate-500 text-[10px]">{storageMode === 'cloud' ? 'Connected' : 'Connect'}</span>}
           </button>
         </div>
-        <nav className="flex-1 px-4 space-y-2"><NavButtons current={view} setView={setView} devicesCount={devices.length} /></nav>
+        <nav className="flex-1 px-4 space-y-2"><NavButtons current={view} setView={setView} devicesCount={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} /></nav>
+        <WorkshopRobot />
         <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">&copy; 2025 Workshop Pro</div>
       </div>
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-slate-900 text-slate-100 flex justify-around items-center p-3 z-50 border-t border-slate-800 pb-safe">
-        <MobileNavButton view="repair" current={view} setView={setView} icon={<Clock className="w-6 h-6" />} label="Ремонт" badge={devices.length} />
+        <MobileNavButton view="repair" current={view} setView={setView} icon={<Clock className="w-6 h-6" />} label="Ремонт" badge={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} />
+        <MobileNavButton view="planning" current={view} setView={setView} icon={<CalendarCheck className="w-6 h-6" />} label="План" />
         <MobileNavButton view="inventory" current={view} setView={setView} icon={<Package className="w-6 h-6" />} label="Склад" />
-        <MobileNavButton view="references" current={view} setView={setView} icon={<BookOpen className="w-6 h-6" />} label="Справка" />
-        <MobileNavButton view="knowledge" current={view} setView={setView} icon={<BrainCircuit className="w-6 h-6" />} label="База" />
         <MobileNavButton view="print" current={view} setView={setView} icon={<Printer className="w-6 h-6" />} label="Печать" />
+        <MobileNavButton view="ai_chat" current={view} setView={setView} icon={<Bot className="w-6 h-6" />} label="AI" />
       </div>
     </>
   );
 
-  const renderRepairView = () => (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8">
+  const renderPlanningView = () => {
+    const plannedDevices = sortedDevices.filter(d => d.isPlanned && d.status !== DeviceStatus.ISSUED);
+    
+    return (
+        <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+           <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 flex items-center gap-2"><CalendarCheck className="w-8 h-8 text-blue-600" />План работ на завтра</h2>
+              <span className="text-xl font-bold text-slate-500">{plannedDevices.length} задач</span>
+           </div>
+           
+           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 min-h-[50vh]">
+              {plannedDevices.length === 0 ? (
+                 <div className="text-center text-gray-400 py-20 flex flex-col items-center">
+                    <CheckCircle className="w-16 h-16 mb-4 text-green-200" />
+                    <p className="text-lg">План пуст. Отметьте устройства галочками во вкладке "В ремонте".</p>
+                 </div>
+              ) : (
+                  <div className="space-y-4">
+                      {plannedDevices.map(device => (
+                          <div key={device.id} className="flex items-center gap-4 p-4 border rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
+                              <button onClick={() => toggleDevicePlan(device.id)} className="text-green-600"><CheckCircle className="w-6 h-6 fill-green-100" /></button>
+                              <div className="flex-1">
+                                  <div className="font-bold text-lg">{device.deviceModel}</div>
+                                  <div className="text-sm text-slate-600">{device.issueDescription}</div>
+                              </div>
+                              <div className="flex flex-col items-end">
+                                  <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border mb-1 ${getUrgencyColor(device.urgency)}`}>{getUrgencyLabel(device.urgency)}</span>
+                                  <span className="text-xs text-slate-400">{getDaysInShop(device.dateReceived)} дн. в работе</span>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              )}
+           </div>
+        </div>
+    );
+  };
+
+  const renderRepairView = () => {
+      // Подсчет статистики
+      const stats = {
+          total: devices.length,
+          received: devices.filter(d => d.status === DeviceStatus.RECEIVED).length,
+          inProgress: devices.filter(d => d.status === DeviceStatus.IN_PROGRESS).length,
+          waiting: devices.filter(d => d.status === DeviceStatus.WAITING_PARTS).length,
+          ready: devices.filter(d => d.status === DeviceStatus.READY).length,
+          issued: devices.filter(d => d.status === DeviceStatus.ISSUED).length
+      };
+
+      return (
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+      {/* Статистика */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-6 text-center">
+          <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm"><div className="text-xs text-slate-500 uppercase font-bold">Всего</div><div className="text-xl font-bold text-slate-800">{stats.total}</div></div>
+          <div className="bg-blue-50 p-2 rounded-lg border border-blue-100"><div className="text-xs text-blue-500 uppercase font-bold">Принято</div><div className="text-xl font-bold text-blue-700">{stats.received}</div></div>
+          <div className="bg-yellow-50 p-2 rounded-lg border border-yellow-100"><div className="text-xs text-yellow-600 uppercase font-bold">В работе</div><div className="text-xl font-bold text-yellow-800">{stats.inProgress}</div></div>
+          <div className="bg-orange-50 p-2 rounded-lg border border-orange-100"><div className="text-xs text-orange-600 uppercase font-bold">Ждут ЗИП</div><div className="text-xl font-bold text-orange-800">{stats.waiting}</div></div>
+          <div className="bg-green-50 p-2 rounded-lg border border-green-100"><div className="text-xs text-green-600 uppercase font-bold">Готовы</div><div className="text-xl font-bold text-green-800">{stats.ready}</div></div>
+          <div className="bg-gray-100 p-2 rounded-lg border border-gray-200 opacity-70"><div className="text-xs text-gray-500 uppercase font-bold">Выдано</div><div className="text-xl font-bold text-gray-700">{stats.issued}</div></div>
+      </div>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800">В работе</h2>
-          <div className="flex items-center gap-2 text-sm text-slate-500">{storageMode === 'local' && <span className="text-orange-600 bg-orange-100 px-2 py-0.5 rounded text-xs">Локальный режим</span>}<span>{sortedDevices.length} ус-тв</span></div>
+          <div className="flex items-center gap-2 text-sm text-slate-500">{storageMode === 'local' && <span className="text-orange-600 bg-orange-100 px-2 py-0.5 rounded text-xs">Локальный режим</span>}<span>Сортировка:</span>
+             <select value={sortMethod} onChange={(e) => setSortMethod(e.target.value as any)} className="bg-transparent font-bold text-blue-600 outline-none cursor-pointer">
+                 <option value="urgency">По срочности</option>
+                 <option value="date">По дате</option>
+                 <option value="status">По статусу</option>
+             </select>
+          </div>
         </div>
         <button onClick={() => setShowAddDeviceModal(true)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"><Plus className="w-5 h-5" />Принять</button>
       </div>
@@ -777,10 +955,17 @@ const App: React.FC = () => {
           <div className="text-center py-12 md:py-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"><Package className="w-12 h-12 md:w-16 md:h-16 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-lg">Нет устройств</p></div>
         ) : (
           sortedDevices.map((device) => (
-            <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden">
+            <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all hover:shadow-md">
               <div className="flex-1">
                 <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
                   <div className="flex items-center gap-2">
+                     <button 
+                        onClick={() => toggleDevicePlan(device.id)} 
+                        className={`p-1 rounded transition-colors ${device.isPlanned ? 'text-green-600 bg-green-100' : 'text-slate-300 hover:text-slate-500'}`}
+                        title="Добавить в план на завтра"
+                     >
+                        <CalendarCheck className="w-5 h-5" />
+                     </button>
                      <h3 className="text-lg md:text-xl font-bold text-slate-800">{device.deviceModel}</h3>
                      {/* Urgency Badge */}
                      {device.urgency !== Urgency.NORMAL && (
@@ -789,7 +974,10 @@ const App: React.FC = () => {
                         </span>
                      )}
                   </div>
-                  <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded">{new Date(device.dateReceived).toLocaleDateString('ru-RU')}</span>
+                  <div className="flex flex-col items-end">
+                      <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded mb-1">{new Date(device.dateReceived).toLocaleDateString('ru-RU')}</span>
+                      <span className="text-[10px] font-medium text-slate-400">{getDaysInShop(device.dateReceived)} дн. в сервисе</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 mb-2">
                    <p className="text-sm text-slate-500 font-medium">{device.clientName}</p>
@@ -811,6 +999,9 @@ const App: React.FC = () => {
                   <select value={device.status} onChange={(e) => updateDeviceStatus(device.id, e.target.value as DeviceStatus)} className={`w-full p-2 rounded border font-medium text-sm focus:outline-none ${device.status === DeviceStatus.READY ? 'bg-green-100 text-green-800 border-green-200' : device.status === DeviceStatus.ISSUED ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
                     {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
+                  {device.status === DeviceStatus.ISSUED && (
+                      <div className="text-[10px] text-center text-slate-400 mt-1">Авто-удаление через 4 дня</div>
+                  )}
                 </div>
                 <button onClick={() => deleteDevice(device.id)} className="text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-colors"><Trash2 className="w-5 h-5" /></button>
               </div>
@@ -819,7 +1010,7 @@ const App: React.FC = () => {
         )}
       </div>
       {showAddDeviceModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50 p-0 md:p-4 animate-fade-in">
           <div className="bg-white rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl animate-slide-up md:animate-none">
             <h3 className="text-2xl font-bold mb-4 text-slate-800">Новое устройство</h3>
             <div className="space-y-4">
@@ -854,6 +1045,7 @@ const App: React.FC = () => {
       )}
     </div>
   );
+  };
 
   const renderInventoryView = () => {
     // Filter Logic
@@ -865,7 +1057,7 @@ const App: React.FC = () => {
     });
 
     return (
-      <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto">
+      <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in">
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-4">Склад</h2>
         <div className="flex gap-2 mb-4 border-b border-slate-200">
           <button onClick={() => setInventoryTab('stock')} className={`flex-1 md:flex-none pb-2 px-4 font-medium transition-colors border-b-2 ${inventoryTab === 'stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>В Наличии</button>
@@ -914,7 +1106,7 @@ const App: React.FC = () => {
         {/* PARTS LIST */}
         <div className="flex-1 overflow-y-auto space-y-3 pb-20 md:pb-0">
           {displayedParts.map(part => (
-            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center gap-4">
+            <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center gap-4 transition-all hover:shadow-md">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                    <span className="text-[10px] text-white bg-blue-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">{part.type}</span>
@@ -942,7 +1134,7 @@ const App: React.FC = () => {
   };
 
   const renderReferencesView = () => (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in">
       <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BookOpen className="w-8 h-8 text-blue-600" />Справочники и Инструменты</h2>
       <div className="flex overflow-x-auto gap-2 mb-6 pb-2 no-scrollbar">
         <button onClick={() => setActiveRefTab('esr')} className={`whitespace-nowrap px-4 py-2 rounded-lg font-medium transition-all ${activeRefTab === 'esr' ? 'bg-blue-600 text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-100'}`}><Table className="w-4 h-4 inline mr-2" />ESR Таблица</button>
@@ -1021,7 +1213,7 @@ const App: React.FC = () => {
   );
   
   const renderKnowledgeBaseView = () => (
-     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto">
+     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24 md:pb-8 flex flex-col h-screen md:h-auto animate-fade-in">
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BrainCircuit className="w-8 h-8 text-indigo-600" />База знаний мастера</h2>
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
            {KNOWLEDGE_BASE.map((section, idx) => {
@@ -1070,7 +1262,7 @@ const App: React.FC = () => {
   );
 
   const renderAIChat = () => (
-    <div className="h-[calc(100vh-80px)] md:h-full flex flex-col bg-slate-50 pb-safe">
+    <div className="h-[calc(100vh-80px)] md:h-full flex flex-col bg-slate-50 pb-safe animate-fade-in">
       <div className="p-4 bg-white border-b border-slate-200 shadow-sm flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Bot className="w-6 h-6 text-purple-600" />AI Помощник</h2></div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4">{chatMessages.map((msg, idx) => (<div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] rounded-2xl p-3 shadow-sm text-sm md:text-base ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'}`}>{msg.text.split('\n').map((line, i) => <p key={i} className="mb-1">{line}</p>)}</div></div>))}{isChatLoading && <div className="flex justify-start"><div className="bg-white p-3 rounded-2xl rounded-bl-none border border-slate-200 shadow-sm"><div className="flex gap-1"><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div></div></div></div>}</div>
       <div className="p-3 bg-white border-t border-slate-200"><div className="flex gap-2"><input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Спросить..." className="flex-1 p-3 border border-slate-300 rounded-xl outline-none focus:border-purple-500" disabled={isChatLoading} /><button onClick={handleSendMessage} disabled={isChatLoading || !chatInput.trim()} className="bg-purple-600 disabled:bg-slate-300 text-white p-3 rounded-xl"><ArrowRight className="w-6 h-6" /></button></div></div>
@@ -1082,6 +1274,7 @@ const App: React.FC = () => {
       {renderSidebar()}
       <main className="flex-1 ml-0 md:ml-64 print:ml-0 min-h-screen overflow-auto print:overflow-visible">
         {view === 'repair' && renderRepairView()}
+        {view === 'planning' && renderPlanningView()}
         {view === 'inventory' && renderInventoryView()}
         {view === 'references' && renderReferencesView()}
         {view === 'knowledge' && renderKnowledgeBaseView()}
@@ -1095,6 +1288,7 @@ const App: React.FC = () => {
 const NavButtons = ({ current, setView, devicesCount }: any) => (
   <>
     <button onClick={() => setView('repair')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'repair' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Clock className="w-5 h-5" /><span>В ремонте</span>{devicesCount > 0 && <span className="ml-auto bg-slate-700 text-xs px-2 py-0.5 rounded-full">{devicesCount}</span>}</button>
+    <button onClick={() => setView('planning')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'planning' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><CalendarCheck className="w-5 h-5" /><span>План</span></button>
     <button onClick={() => setView('inventory')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'inventory' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><Package className="w-5 h-5" /><span>Склад</span></button>
     <button onClick={() => setView('references')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'references' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><BookOpen className="w-5 h-5" /><span>Справочники</span></button>
     <button onClick={() => setView('knowledge')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${current === 'knowledge' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><BrainCircuit className="w-5 h-5" /><span>База Знаний</span></button>

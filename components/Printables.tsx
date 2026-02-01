@@ -94,7 +94,6 @@ export const Printables: React.FC<PrintablesProps> = ({ devices }) => {
             {/* Header */}
             <div className="text-center border-b-2 border-black pb-2 mb-2">
               <h3 className="text-xl font-bold uppercase tracking-wider">Квитанция {device.isBlank ? '' : `#${device.id.slice(-4)}`}</h3>
-              <p className="text-xs text-gray-500 uppercase">Мастерская Workshop Pro</p>
             </div>
             
             {/* Body */}

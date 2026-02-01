@@ -21,6 +21,8 @@ export interface Device {
   status: DeviceStatus;
   urgency: Urgency;
   notes?: string;
+  statusChangedAt?: string; // ISO string, для автоудаления
+  isPlanned?: boolean; // План на завтра
 }
 
 export enum PartType {
@@ -46,7 +48,7 @@ export interface SparePart {
   inStock: boolean; // true = in stock, false = to buy
 }
 
-export type ViewState = 'repair' | 'inventory' | 'print' | 'ai_chat' | 'references' | 'knowledge';
+export type ViewState = 'repair' | 'inventory' | 'print' | 'ai_chat' | 'references' | 'knowledge' | 'planning';
 
 export interface ChatMessage {
   role: 'user' | 'model';

@@ -12,6 +12,8 @@ export default async function handler(req, res) {
           datereceived as "dateReceived", 
           status,
           urgency,
+          statuschangedat as "statusChangedAt",
+          isplanned as "isPlanned",
           notes 
         FROM devices
       `;
@@ -19,14 +21,14 @@ export default async function handler(req, res) {
     } 
     
     if (req.method === 'POST') {
-      const { id, clientName, deviceModel, issueDescription, dateReceived, status, urgency, notes } = req.body;
+      const { id, clientName, deviceModel, issueDescription, dateReceived, status, urgency, notes, statusChangedAt, isPlanned } = req.body;
       
-      // Устанавливаем дефолтное значение urgency, если оно не пришло
       const safeUrgency = urgency || 'normal';
-
+      // Convert boolean to string for Postgres if needed or rely on driver, usually bool is fine.
+      
       await sql`
-        INSERT INTO devices (id, clientName, deviceModel, issueDescription, dateReceived, status, urgency, notes)
-        VALUES (${id}, ${clientName}, ${deviceModel}, ${issueDescription}, ${dateReceived}, ${status}, ${safeUrgency}, ${notes || ''})
+        INSERT INTO devices (id, clientName, deviceModel, issueDescription, dateReceived, status, urgency, notes, statusChangedAt, isPlanned)
+        VALUES (${id}, ${clientName}, ${deviceModel}, ${issueDescription}, ${dateReceived}, ${status}, ${safeUrgency}, ${notes || ''}, ${statusChangedAt || null}, ${isPlanned || false})
         ON CONFLICT (id) DO UPDATE SET 
           clientName = ${clientName},
           deviceModel = ${deviceModel},
@@ -34,6 +36,8 @@ export default async function handler(req, res) {
           dateReceived = ${dateReceived},
           status = ${status}, 
           urgency = ${safeUrgency},
+          statusChangedAt = ${statusChangedAt || null},
+          isPlanned = ${isPlanned || false},
           notes = ${notes || ''};
       `;
       return res.status(200).json({ success: true });
