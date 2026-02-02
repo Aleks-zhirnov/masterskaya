@@ -41,7 +41,10 @@ import {
   Scissors,
   CalendarCheck,
   BarChart3,
-  ListFilter
+  ListFilter,
+  Pencil,
+  Users,
+  LayoutList
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
 import { generateWorkshopAdvice } from './services/ai';
@@ -528,8 +531,10 @@ const App: React.FC = () => {
 
   // UI State - Repair
   const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newDevice, setNewDevice] = useState<Partial<Device>>({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
   const [sortMethod, setSortMethod] = useState<'date' | 'urgency' | 'status'>('urgency');
+  const [groupByClient, setGroupByClient] = useState(false);
   
   // UI State - Inventory
   const [inventoryTab, setInventoryTab] = useState<'stock' | 'buy'>('stock');
@@ -730,6 +735,20 @@ const App: React.FC = () => {
      });
   }, [devices, sortMethod]);
 
+  const groupedDevices = useMemo(() => {
+      if (!groupByClient) return null;
+      
+      const groups: Record<string, Device[]> = {};
+      sortedDevices.forEach(device => {
+          const client = device.clientName || 'Неизвестный клиент';
+          if (!groups[client]) {
+              groups[client] = [];
+          }
+          groups[client].push(device);
+      });
+      return groups;
+  }, [sortedDevices, groupByClient]);
+
   // MOVE useMemo HERE
   const stats = useMemo(() => ({
       total: devices.length,
@@ -747,28 +766,69 @@ const App: React.FC = () => {
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
   };
 
-  const addDevice = () => {
+  const handleSaveDevice = () => {
     if (!newDevice.clientName || !newDevice.deviceModel) return;
     
     let dateReceived = new Date().toISOString();
     if (newDevice.dateReceived) {
-        dateReceived = new Date(newDevice.dateReceived).toISOString();
+        // Проверяем, если дата уже ISO, не трогаем, иначе форматируем
+        if (!newDevice.dateReceived.includes('T')) {
+             dateReceived = new Date(newDevice.dateReceived).toISOString();
+        } else {
+             dateReceived = newDevice.dateReceived;
+        }
     }
 
-    const device: Device = {
-      id: Date.now().toString(),
-      clientName: newDevice.clientName,
-      deviceModel: newDevice.deviceModel,
-      issueDescription: newDevice.issueDescription || '',
-      dateReceived: dateReceived,
-      status: DeviceStatus.RECEIVED,
-      urgency: newDevice.urgency || Urgency.NORMAL,
-      notes: '',
-      statusChangedAt: new Date().toISOString()
-    };
-    persistDevice([...devices, device], device);
+    if (editingId) {
+        // Обновление существующего
+        const updatedDevices = devices.map(d => {
+            if (d.id === editingId) {
+                return {
+                    ...d,
+                    ...newDevice,
+                    dateReceived: dateReceived, // Сохраняем дату
+                    // Сохраняем остальные поля, если они были
+                    id: d.id, 
+                    status: newDevice.status || d.status,
+                    urgency: newDevice.urgency || d.urgency,
+                    statusChangedAt: d.status !== newDevice.status ? new Date().toISOString() : d.statusChangedAt
+                } as Device;
+            }
+            return d;
+        });
+        persistDevice(updatedDevices, updatedDevices.find(d => d.id === editingId));
+    } else {
+        // Создание нового
+        const device: Device = {
+          id: Date.now().toString(),
+          clientName: newDevice.clientName,
+          deviceModel: newDevice.deviceModel,
+          issueDescription: newDevice.issueDescription || '',
+          dateReceived: dateReceived,
+          status: DeviceStatus.RECEIVED,
+          urgency: newDevice.urgency || Urgency.NORMAL,
+          notes: '',
+          statusChangedAt: new Date().toISOString()
+        };
+        persistDevice([...devices, device], device);
+    }
+    
     setNewDevice({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
+    setEditingId(null);
     setShowAddDeviceModal(false);
+  };
+
+  const handleEditDevice = (device: Device) => {
+      setEditingId(device.id);
+      setNewDevice({
+          clientName: device.clientName,
+          deviceModel: device.deviceModel,
+          issueDescription: device.issueDescription,
+          dateReceived: device.dateReceived,
+          status: device.status,
+          urgency: device.urgency
+      });
+      setShowAddDeviceModal(true);
   };
 
   const updateDeviceStatus = (id: string, status: DeviceStatus) => {
@@ -907,6 +967,62 @@ const App: React.FC = () => {
   };
 
   // --- RENDERERS ---
+  const renderDeviceCard = (device: Device) => (
+    <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 transform-gpu will-change-transform">
+      <div className="flex-1">
+        <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
+          <div className="flex items-center gap-2">
+             <button 
+                onClick={() => toggleDevicePlan(device.id)} 
+                className={`p-1 rounded transition-all duration-200 active:scale-90 ${device.isPlanned ? 'text-green-600 bg-green-100 hover:bg-green-200' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'}`}
+                title="Добавить в план на завтра"
+             >
+                <CalendarCheck className="w-5 h-5" />
+             </button>
+             <h3 className="text-lg md:text-xl font-bold text-slate-800">{device.deviceModel}</h3>
+             {/* Urgency Badge */}
+             {device.urgency !== Urgency.NORMAL && (
+                <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${getUrgencyColor(device.urgency)}`}>
+                   {getUrgencyLabel(device.urgency)}
+                </span>
+             )}
+          </div>
+          <div className="flex flex-col items-end">
+              <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded mb-1">{new Date(device.dateReceived).toLocaleDateString('ru-RU')}</span>
+              <span className="text-[10px] font-medium text-slate-400">{getDaysInShop(device.dateReceived)} дн. в сервисе</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 mb-2">
+           <p className="text-sm text-slate-500 font-medium">{device.clientName}</p>
+           {/* Urgency Selector Small */}
+           <select 
+              value={device.urgency || Urgency.NORMAL}
+              onChange={(e) => updateDeviceUrgency(device.id, e.target.value as Urgency)}
+              className="text-xs border border-slate-200 rounded px-1 py-0.5 text-slate-400 focus:text-slate-700 outline-none cursor-pointer hover:border-slate-400 transition-colors"
+           >
+              <option value={Urgency.NORMAL}>Норма</option>
+              <option value={Urgency.HIGH}>Важно</option>
+              <option value={Urgency.CRITICAL}>Срочно!</option>
+           </select>
+        </div>
+        <div className="bg-red-50 text-red-700 p-2 md:p-3 rounded-md text-sm border border-red-100 mb-3">{device.issueDescription}</div>
+      </div>
+      <div className="w-full md:w-64 flex flex-row md:flex-col justify-between items-center md:items-stretch gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6">
+        <div className="flex-grow md:flex-grow-0">
+          <select value={device.status} onChange={(e) => updateDeviceStatus(device.id, e.target.value as DeviceStatus)} className={`w-full p-2 rounded border font-medium text-sm focus:outline-none transition-colors cursor-pointer ${device.status === DeviceStatus.READY ? 'bg-green-100 text-green-800 border-green-200' : device.status === DeviceStatus.ISSUED ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
+            {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {device.status === DeviceStatus.ISSUED && (
+              <div className="text-[10px] text-center text-slate-400 mt-1">Авто-удаление через 4 дня</div>
+          )}
+        </div>
+        <div className="flex gap-2">
+            <button onClick={() => handleEditDevice(device)} className="flex-1 text-slate-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition-all active:scale-90 duration-200 border border-slate-100 flex justify-center items-center"><Pencil className="w-5 h-5" /></button>
+            <button onClick={() => deleteDevice(device.id)} className="flex-1 text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-all active:scale-90 duration-200 border border-slate-100 flex justify-center items-center"><Trash2 className="w-5 h-5" /></button>
+        </div>
+      </div>
+    </div>
+  );
 
   if (!initLoaded) return <div className="flex items-center justify-center min-h-screen bg-slate-50 text-slate-500"><div className="animate-spin mr-2"><Clock className="w-6 h-6" /></div>Загрузка мастерской...</div>;
 
@@ -934,44 +1050,6 @@ const App: React.FC = () => {
     </>
   );
 
-  const renderPlanningView = () => {
-    const plannedDevices = sortedDevices.filter(d => d.isPlanned && d.status !== DeviceStatus.ISSUED);
-    
-    return (
-        <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in transform-gpu">
-           <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 flex items-center gap-2"><CalendarCheck className="w-8 h-8 text-blue-600" />План работ на завтра</h2>
-              <span className="text-xl font-bold text-slate-500">{plannedDevices.length} задач</span>
-           </div>
-           
-           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 min-h-[50vh]">
-              {plannedDevices.length === 0 ? (
-                 <div className="text-center text-gray-400 py-20 flex flex-col items-center">
-                    <CheckCircle className="w-16 h-16 mb-4 text-green-200" />
-                    <p className="text-lg">План пуст. Отметьте устройства галочками во вкладке "В ремонте".</p>
-                 </div>
-              ) : (
-                  <div className="space-y-4">
-                      {plannedDevices.map(device => (
-                          <div key={device.id} className="flex items-center gap-4 p-4 border rounded-lg bg-slate-50 hover:bg-slate-100 transition-all hover:scale-[1.01] hover:shadow-md duration-200 cursor-default will-change-transform">
-                              <button onClick={() => toggleDevicePlan(device.id)} className="text-green-600 hover:scale-110 transition-transform active:scale-90 will-change-transform"><CheckCircle className="w-6 h-6 fill-green-100" /></button>
-                              <div className="flex-1">
-                                  <div className="font-bold text-lg">{device.deviceModel}</div>
-                                  <div className="text-sm text-slate-600">{device.issueDescription}</div>
-                              </div>
-                              <div className="flex flex-col items-end">
-                                  <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border mb-1 ${getUrgencyColor(device.urgency)}`}>{getUrgencyLabel(device.urgency)}</span>
-                                  <span className="text-xs text-slate-400">{getDaysInShop(device.dateReceived)} дн. в работе</span>
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              )}
-           </div>
-        </div>
-    );
-  };
-
   const renderRepairView = () => {
       // stats is now computed at the component level to adhere to Rules of Hooks
 
@@ -990,105 +1068,101 @@ const App: React.FC = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800">В работе</h2>
-          <div className="flex items-center gap-2 text-sm text-slate-500">{storageMode === 'local' && <span className="text-orange-600 bg-orange-100 px-2 py-0.5 rounded text-xs">Локальный режим</span>}<span>Сортировка:</span>
-             <select value={sortMethod} onChange={(e) => setSortMethod(e.target.value as any)} className="bg-transparent font-bold text-blue-600 outline-none cursor-pointer hover:text-blue-800 transition-colors">
-                 <option value="urgency">По срочности</option>
-                 <option value="date">По дате</option>
-                 <option value="status">По статусу</option>
-             </select>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+             {storageMode === 'local' && <span className="text-orange-600 bg-orange-100 px-2 py-0.5 rounded text-xs">Локальный режим</span>}
+             <div className="flex items-center gap-1 bg-white border border-slate-200 rounded px-2 py-1">
+                 <span>Сортировка:</span>
+                 <select value={sortMethod} onChange={(e) => setSortMethod(e.target.value as any)} className="bg-transparent font-bold text-blue-600 outline-none cursor-pointer hover:text-blue-800 transition-colors">
+                     <option value="urgency">По срочности</option>
+                     <option value="date">По дате</option>
+                     <option value="status">По статусу</option>
+                 </select>
+             </div>
+             <button 
+                onClick={() => setGroupByClient(!groupByClient)} 
+                className={`flex items-center gap-1 px-2 py-1 rounded border transition-colors ${groupByClient ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600'}`}
+             >
+                {groupByClient ? <LayoutList className="w-4 h-4"/> : <Users className="w-4 h-4"/>}
+                <span>{groupByClient ? 'Разгруппировать' : 'Группировать по клиентам'}</span>
+             </button>
           </div>
         </div>
-        <button onClick={() => setShowAddDeviceModal(true)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 duration-200 hover:shadow-lg will-change-transform"><Plus className="w-5 h-5" />Принять</button>
+        <button 
+            onClick={() => {
+                setEditingId(null);
+                setNewDevice({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
+                setShowAddDeviceModal(true);
+            }} 
+            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 duration-200 hover:shadow-lg will-change-transform"
+        >
+            <Plus className="w-5 h-5" />Принять
+        </button>
       </div>
+      
       <div className="grid gap-4">
         {sortedDevices.length === 0 ? (
           <div className="text-center py-12 md:py-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"><Package className="w-12 h-12 md:w-16 md:h-16 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-lg">Нет устройств</p></div>
+        ) : groupByClient && groupedDevices ? (
+            Object.entries(groupedDevices).map(([client, clientDevices]) => (
+                <div key={client} className="mb-4">
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                        <Users className="w-5 h-5 text-slate-400" />
+                        <h3 className="font-bold text-lg text-slate-700">{client}</h3>
+                        <span className="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-0.5 rounded-full">{clientDevices.length}</span>
+                    </div>
+                    <div className="grid gap-4 pl-0 md:pl-4 border-l-2 border-slate-200">
+                        {clientDevices.map(device => renderDeviceCard(device))}
+                    </div>
+                </div>
+            ))
         ) : (
-          sortedDevices.map((device) => (
-            <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 transform-gpu will-change-transform">
-              <div className="flex-1">
-                <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
-                  <div className="flex items-center gap-2">
-                     <button 
-                        onClick={() => toggleDevicePlan(device.id)} 
-                        className={`p-1 rounded transition-all duration-200 active:scale-90 ${device.isPlanned ? 'text-green-600 bg-green-100 hover:bg-green-200' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'}`}
-                        title="Добавить в план на завтра"
-                     >
-                        <CalendarCheck className="w-5 h-5" />
-                     </button>
-                     <h3 className="text-lg md:text-xl font-bold text-slate-800">{device.deviceModel}</h3>
-                     {/* Urgency Badge */}
-                     {device.urgency !== Urgency.NORMAL && (
-                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${getUrgencyColor(device.urgency)}`}>
-                           {getUrgencyLabel(device.urgency)}
-                        </span>
-                     )}
-                  </div>
-                  <div className="flex flex-col items-end">
-                      <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded mb-1">{new Date(device.dateReceived).toLocaleDateString('ru-RU')}</span>
-                      <span className="text-[10px] font-medium text-slate-400">{getDaysInShop(device.dateReceived)} дн. в сервисе</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mb-2">
-                   <p className="text-sm text-slate-500 font-medium">{device.clientName}</p>
-                   {/* Urgency Selector Small */}
-                   <select 
-                      value={device.urgency || Urgency.NORMAL}
-                      onChange={(e) => updateDeviceUrgency(device.id, e.target.value as Urgency)}
-                      className="text-xs border border-slate-200 rounded px-1 py-0.5 text-slate-400 focus:text-slate-700 outline-none cursor-pointer hover:border-slate-400 transition-colors"
-                   >
-                      <option value={Urgency.NORMAL}>Норма</option>
-                      <option value={Urgency.HIGH}>Важно</option>
-                      <option value={Urgency.CRITICAL}>Срочно!</option>
-                   </select>
-                </div>
-                <div className="bg-red-50 text-red-700 p-2 md:p-3 rounded-md text-sm border border-red-100 mb-3">{device.issueDescription}</div>
-              </div>
-              <div className="w-full md:w-64 flex flex-row md:flex-col justify-between items-center md:items-stretch gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6">
-                <div className="flex-grow md:flex-grow-0">
-                  <select value={device.status} onChange={(e) => updateDeviceStatus(device.id, e.target.value as DeviceStatus)} className={`w-full p-2 rounded border font-medium text-sm focus:outline-none transition-colors cursor-pointer ${device.status === DeviceStatus.READY ? 'bg-green-100 text-green-800 border-green-200' : device.status === DeviceStatus.ISSUED ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
-                    {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  {device.status === DeviceStatus.ISSUED && (
-                      <div className="text-[10px] text-center text-slate-400 mt-1">Авто-удаление через 4 дня</div>
-                  )}
-                </div>
-                <button onClick={() => deleteDevice(device.id)} className="text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-all active:scale-90 duration-200"><Trash2 className="w-5 h-5" /></button>
-              </div>
-            </div>
-          ))
+          sortedDevices.map((device) => renderDeviceCard(device))
         )}
       </div>
       {showAddDeviceModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4 animate-fade-in">
-          <div className="bg-white rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl animate-slide-up md:animate-none transform-gpu will-change-transform">
-            <h3 className="text-2xl font-bold mb-4 text-slate-800">Новое устройство</h3>
-            <div className="space-y-4">
-              <div><label className="text-sm font-medium text-slate-700">Модель</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.deviceModel || ''} onChange={e => setNewDevice({...newDevice, deviceModel: e.target.value})} /></div>
-              <div><label className="text-sm font-medium text-slate-700">Клиент</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientName || ''} onChange={e => setNewDevice({...newDevice, clientName: e.target.value})} /></div>
-              <div className="flex gap-4">
-                 <div className="flex-1">
-                    <label className="text-sm font-medium text-slate-700">Дата приема</label>
-                    <input type="date" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.dateReceived ? newDevice.dateReceived.split('T')[0] : new Date().toLocaleDateString('en-CA')} onChange={e => setNewDevice({...newDevice, dateReceived: e.target.value})} />
-                 </div>
-                 <div className="flex-1">
-                    <label className="text-sm font-medium text-slate-700">Срочность</label>
-                    <select 
-                       value={newDevice.urgency} 
-                       onChange={e => setNewDevice({...newDevice, urgency: e.target.value as Urgency})}
-                       className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                    >
-                       <option value={Urgency.NORMAL}>Обычная</option>
-                       <option value={Urgency.HIGH}>Важно</option>
-                       <option value={Urgency.CRITICAL}>Срочно!</option>
-                    </select>
-                 </div>
-              </div>
-              <div><label className="text-sm font-medium text-slate-700">Поломка</label><textarea className="w-full p-3 border border-slate-300 rounded-lg outline-none h-20 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.issueDescription || ''} onChange={e => setNewDevice({...newDevice, issueDescription: e.target.value})} /></div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowAddDeviceModal(false)} className="flex-1 py-3 text-slate-600 font-medium bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors active:scale-95 duration-200">Отмена</button>
-                <button onClick={addDevice} className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors active:scale-95 duration-200 shadow-md">Сохранить</button>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform flex flex-col max-h-[90vh]">
+            <div className="p-6 md:p-8 overflow-y-auto">
+                <h3 className="text-2xl font-bold mb-4 text-slate-800">{editingId ? 'Редактирование заказа' : 'Новое устройство'}</h3>
+                <div className="space-y-4">
+                <div><label className="text-sm font-medium text-slate-700">Модель</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.deviceModel || ''} onChange={e => setNewDevice({...newDevice, deviceModel: e.target.value})} /></div>
+                <div><label className="text-sm font-medium text-slate-700">Клиент</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientName || ''} onChange={e => setNewDevice({...newDevice, clientName: e.target.value})} /></div>
+                <div className="flex gap-4">
+                    <div className="flex-1">
+                        <label className="text-sm font-medium text-slate-700">Дата приема</label>
+                        <input type="date" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.dateReceived ? newDevice.dateReceived.split('T')[0] : new Date().toLocaleDateString('en-CA')} onChange={e => setNewDevice({...newDevice, dateReceived: e.target.value})} />
+                    </div>
+                    <div className="flex-1">
+                        <label className="text-sm font-medium text-slate-700">Срочность</label>
+                        <select 
+                        value={newDevice.urgency} 
+                        onChange={e => setNewDevice({...newDevice, urgency: e.target.value as Urgency})}
+                        className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                        >
+                        <option value={Urgency.NORMAL}>Обычная</option>
+                        <option value={Urgency.HIGH}>Важно</option>
+                        <option value={Urgency.CRITICAL}>Срочно!</option>
+                        </select>
+                    </div>
+                </div>
+                {editingId && (
+                     <div>
+                        <label className="text-sm font-medium text-slate-700">Статус</label>
+                        <select 
+                            value={newDevice.status} 
+                            onChange={e => setNewDevice({...newDevice, status: e.target.value as DeviceStatus})}
+                            className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                        >
+                            {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                     </div>
+                )}
+                <div><label className="text-sm font-medium text-slate-700">Поломка</label><textarea className="w-full p-3 border border-slate-300 rounded-lg outline-none h-20 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.issueDescription || ''} onChange={e => setNewDevice({...newDevice, issueDescription: e.target.value})} /></div>
+                <div className="flex gap-3 pt-2">
+                    <button onClick={() => { setShowAddDeviceModal(false); setEditingId(null); }} className="flex-1 py-3 text-slate-600 font-medium bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors active:scale-95 duration-200">Отмена</button>
+                    <button onClick={handleSaveDevice} className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors active:scale-95 duration-200 shadow-md">Сохранить</button>
+                </div>
+                </div>
             </div>
           </div>
         </div>
@@ -1098,186 +1172,248 @@ const App: React.FC = () => {
   };
 
   const renderInventoryView = () => (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
-       <div className="flex justify-between items-center mb-6">
-          <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-2"><Package className="w-8 h-8 text-blue-600" />Склад запчастей</h2>
-          <div className="flex bg-white rounded-lg p-1 shadow border border-slate-200">
-             <button onClick={() => setInventoryTab('stock')} className={`px-4 py-1.5 rounded text-sm font-bold transition-all ${inventoryTab === 'stock' ? 'bg-blue-100 text-blue-700' : 'text-slate-500 hover:bg-slate-50'}`}>В наличии</button>
-             <button onClick={() => setInventoryTab('buy')} className={`px-4 py-1.5 rounded text-sm font-bold transition-all ${inventoryTab === 'buy' ? 'bg-orange-100 text-orange-700' : 'text-slate-500 hover:bg-slate-50'}`}>Купить</button>
-          </div>
-       </div>
+    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in transform-gpu">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl md:text-3xl font-bold text-slate-800">Склад</h2>
+        <div className="flex bg-slate-200 p-1 rounded-lg">
+          <button onClick={() => setInventoryTab('stock')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${inventoryTab === 'stock' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Наличие</button>
+          <button onClick={() => setInventoryTab('buy')} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${inventoryTab === 'buy' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>Закупки</button>
+        </div>
+      </div>
 
-       {/* Filters */}
-       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[200px]">
-             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Категория</label>
-             <select value={inventoryFilterType} onChange={(e) => setInventoryFilterType(e.target.value as any)} className="w-full p-2 border border-slate-300 rounded font-medium">
-                <option value="ALL">Все категории</option>
-                {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
-             </select>
-          </div>
-          {inventoryFilterType !== 'ALL' && (
-             <div className="flex-1 min-w-[200px]">
-                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Тип</label>
-                <select value={inventoryFilterSubtype} onChange={(e) => setInventoryFilterSubtype(e.target.value)} className="w-full p-2 border border-slate-300 rounded font-medium">
-                   <option value="ALL">Все типы</option>
-                   {RADIO_SUBCATEGORIES[inventoryFilterType]?.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-             </div>
-          )}
-          <div className="w-full h-px bg-slate-200 my-2 md:hidden"></div>
-       </div>
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-wrap gap-4 items-center">
+         <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-slate-400" />
+            <select value={inventoryFilterType} onChange={(e) => setInventoryFilterType(e.target.value as PartType | 'ALL')} className="border border-slate-200 rounded p-2 text-sm bg-slate-50 outline-none focus:border-blue-400">
+               <option value="ALL">Все категории</option>
+               {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+         </div>
+         {inventoryFilterType !== 'ALL' && (
+            <select value={inventoryFilterSubtype} onChange={(e) => setInventoryFilterSubtype(e.target.value)} className="border border-slate-200 rounded p-2 text-sm bg-slate-50 outline-none focus:border-blue-400">
+               <option value="ALL">Все подкатегории</option>
+               {RADIO_SUBCATEGORIES[inventoryFilterType].map(sub => <option key={sub} value={sub}>{sub}</option>)}
+            </select>
+         )}
+      </div>
 
-       {/* Add Part Form */}
-       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex flex-wrap gap-3 items-end">
-          <div className="flex-grow min-w-[200px]">
-             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Название</label>
-             <input type="text" placeholder="Например: Конденсатор 1000uF 25V" className="w-full p-2 border border-slate-300 rounded" value={newPartName} onChange={(e) => setNewPartName(e.target.value)} />
-          </div>
-          <div className="w-40">
-             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Тип</label>
-             <select value={newPartType} onChange={(e) => setNewPartType(e.target.value as PartType)} className="w-full p-2 border border-slate-300 rounded">
-                {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
-             </select>
-          </div>
-          {RADIO_SUBCATEGORIES[newPartType] && (
-             <div className="w-40">
-                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Подтип</label>
-                <select value={newPartSubtype} onChange={(e) => setNewPartSubtype(e.target.value)} className="w-full p-2 border border-slate-300 rounded">
-                   {RADIO_SUBCATEGORIES[newPartType].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-             </div>
-          )}
-          <div className="w-20">
-             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Кол-во</label>
-             <input type="number" min="1" className="w-full p-2 border border-slate-300 rounded" value={newPartQuantity} onChange={(e) => setNewPartQuantity(parseInt(e.target.value))} />
-          </div>
-          <button onClick={addPart} className="bg-blue-600 text-white p-2 rounded hover:bg-blue-700 transition-colors"><Plus className="w-6 h-6" /></button>
-       </div>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+         <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+            <thead>
+                <tr className="bg-slate-50 text-slate-500 text-sm uppercase">
+                <th className="p-4 font-semibold">Название</th>
+                <th className="p-4 font-semibold">Тип</th>
+                <th className="p-4 font-semibold">Кол-во</th>
+                <th className="p-4 font-semibold text-right">Действия</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+                {parts.filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock))
+                      .filter(p => inventoryFilterType === 'ALL' || p.type === inventoryFilterType)
+                      .filter(p => inventoryFilterSubtype === 'ALL' || p.subtype === inventoryFilterSubtype)
+                      .map(part => (
+                <tr key={part.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4 font-medium text-slate-700">
+                       {part.name}
+                       {part.subtype && <div className="text-[10px] text-slate-400 bg-slate-100 inline-block px-1.5 rounded ml-2">{part.subtype}</div>}
+                    </td>
+                    <td className="p-4 text-slate-500 text-sm">{part.type}</td>
+                    <td className="p-4">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => updatePartQuantity(part.id, -1)} className="w-6 h-6 rounded bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Minus className="w-3 h-3" /></button>
+                        <span className="font-bold w-4 text-center">{part.quantity}</span>
+                        <button onClick={() => updatePartQuantity(part.id, 1)} className="w-6 h-6 rounded bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200"><Plus className="w-3 h-3" /></button>
+                    </div>
+                    </td>
+                    <td className="p-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => togglePartStockStatus(part.id)} className={`p-2 rounded hover:bg-slate-100 ${part.inStock ? 'text-orange-500' : 'text-green-500'}`} title={part.inStock ? "В список покупок" : "На склад"}>
+                           {part.inStock ? <ShoppingCart className="w-4 h-4" /> : <Package className="w-4 h-4" />}
+                        </button>
+                        <button onClick={() => deletePart(part.id)} className="p-2 text-red-400 hover:text-red-600 rounded hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                    </td>
+                </tr>
+                ))}
+                {parts.filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock)).length === 0 && (
+                   <tr><td colSpan={4} className="p-8 text-center text-slate-400">Список пуст</td></tr>
+                )}
+            </tbody>
+            </table>
+         </div>
+      </div>
 
-       {/* Parts List */}
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {parts
-             .filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock))
-             .filter(p => inventoryFilterType === 'ALL' || p.type === inventoryFilterType)
-             .filter(p => inventoryFilterSubtype === 'ALL' || p.subtype === inventoryFilterSubtype)
-             .map(part => (
-             <div key={part.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col relative group hover:border-blue-300 transition-all">
-                <div className="flex justify-between items-start mb-2">
-                   <div>
-                      <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1 block">{part.type} / {part.subtype}</span>
-                      <h4 className="font-bold text-slate-800">{part.name}</h4>
-                   </div>
-                   <button onClick={() => togglePartStockStatus(part.id)} className={`p-1 rounded ${part.inStock ? 'text-green-500 hover:bg-green-50' : 'text-orange-500 hover:bg-orange-50'}`} title={part.inStock ? "В наличии -> Купить" : "Купить -> В наличии"}>
-                      {part.inStock ? <CheckCircle className="w-5 h-5" /> : <ShoppingCart className="w-5 h-5" />}
-                   </button>
-                </div>
-                <div className="mt-auto flex items-center justify-between pt-3 border-t border-slate-100">
-                   <div className="flex items-center gap-3">
-                      <button onClick={() => updatePartQuantity(part.id, -1)} className="w-6 h-6 flex items-center justify-center bg-slate-100 rounded text-slate-600 hover:bg-slate-200"><Minus className="w-3 h-3" /></button>
-                      <span className="font-mono font-bold w-6 text-center">{part.quantity}</span>
-                      <button onClick={() => updatePartQuantity(part.id, 1)} className="w-6 h-6 flex items-center justify-center bg-slate-100 rounded text-slate-600 hover:bg-slate-200"><Plus className="w-3 h-3" /></button>
-                   </div>
-                   <button onClick={() => deletePart(part.id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                </div>
-             </div>
-          ))}
-       </div>
+      <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+        <h3 className="font-bold text-lg mb-4 text-slate-800">Добавить позицию</h3>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <input type="text" placeholder="Название (например: 100uF 16V)" className="border border-slate-300 rounded p-2 outline-none focus:border-blue-500" value={newPartName} onChange={e => setNewPartName(e.target.value)} />
+          <select className="border border-slate-300 rounded p-2 bg-white outline-none focus:border-blue-500" value={newPartType} onChange={e => setNewPartType(e.target.value as PartType)}>
+            {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select className="border border-slate-300 rounded p-2 bg-white outline-none focus:border-blue-500" value={newPartSubtype} onChange={e => setNewPartSubtype(e.target.value)}>
+             {RADIO_SUBCATEGORIES[newPartType].map(sub => <option key={sub} value={sub}>{sub}</option>)}
+          </select>
+          <input type="number" min="1" placeholder="Кол-во" className="border border-slate-300 rounded p-2 outline-none focus:border-blue-500" value={newPartQuantity} onChange={e => setNewPartQuantity(parseInt(e.target.value) || 1)} />
+          <button onClick={addPart} className="bg-blue-600 text-white font-bold rounded p-2 hover:bg-blue-700 active:scale-95 transition-all">Добавить</button>
+        </div>
+      </div>
     </div>
   );
 
-  const renderAiChatView = () => (
-    <div className="flex flex-col h-[calc(100vh-64px)] md:h-screen p-4 md:p-8 max-w-4xl mx-auto pb-24 md:pb-8">
-       <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-2 mb-6"><Bot className="w-8 h-8 text-indigo-600" />AI Ассистент</h2>
-       <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-          <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50">
-             {chatMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                   <div className={`max-w-[80%] p-3 rounded-xl shadow-sm text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'}`}>
-                      {msg.role === 'model' && <Bot className="w-4 h-4 mb-1 text-indigo-500 inline mr-2" />}
-                      {msg.text}
+  const renderAIChat = () => (
+    <div className="h-full flex flex-col bg-slate-50 p-4 md:p-6 pb-20 md:pb-6 animate-fade-in">
+       <div className="flex items-center gap-3 mb-4">
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-lg text-white shadow-lg"><Bot className="w-6 h-6" /></div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">AI Инженер</h2>
+            <p className="text-xs text-slate-500">На базе Google Gemini 2.0 Flash</p>
+          </div>
+       </div>
+       
+       <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col mb-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+             {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                   <div className={`max-w-[80%] md:max-w-[70%] p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
+                      {/* Simple Markdown Rendering */}
+                      {msg.text.split('\n').map((line, i) => <p key={i} className={line.startsWith('-') || line.match(/^\d\./) ? 'ml-4' : ''}>{line}</p>)}
                    </div>
                 </div>
              ))}
-             {isChatLoading && <div className="flex justify-start"><div className="bg-white p-3 rounded-xl border border-slate-200 rounded-bl-none flex items-center gap-2 text-slate-500 text-sm"><RefreshCw className="w-3 h-3 animate-spin" /> Печатает...</div></div>}
+             {isChatLoading && (
+                <div className="flex justify-start">
+                   <div className="bg-slate-100 p-3 rounded-2xl rounded-bl-none flex gap-1 items-center">
+                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div>
+                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div>
+                   </div>
+                </div>
+             )}
           </div>
-          <div className="p-4 bg-white border-t border-slate-200 flex gap-2">
-             <input type="text" className="flex-1 border border-slate-300 rounded-lg px-4 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 transition-all" placeholder="Спросите про аналоги, диагностику или схемы..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} />
-             <button onClick={handleSendMessage} disabled={isChatLoading || !chatInput.trim()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"><ArrowRight className="w-5 h-5" /></button>
+          <div className="p-4 border-t border-slate-100 bg-slate-50">
+             <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  className="flex-1 border border-slate-300 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  placeholder="Спроси про аналог транзистора..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                />
+                <button onClick={handleSendMessage} disabled={!chatInput.trim() || isChatLoading} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white p-3 rounded-xl transition-all active:scale-95 shadow-md">
+                   <ArrowRight className="w-6 h-6" />
+                </button>
+             </div>
           </div>
        </div>
     </div>
   );
 
-  const renderReferencesView = () => (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
-       <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-2 mb-6"><BookOpen className="w-8 h-8 text-teal-600" />Справочники</h2>
+  const renderReferences = () => (
+    <div className="p-4 md:p-8 max-w-5xl mx-auto pb-24 md:pb-8 animate-fade-in">
+       <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BookOpen className="w-6 h-6 text-blue-500"/> Справочники</h2>
        
-       <div className="flex flex-wrap gap-2 mb-6">
-          <button onClick={() => setActiveRefTab('esr')} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeRefTab === 'esr' ? 'bg-teal-100 text-teal-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Таблицы ESR</button>
-          <button onClick={() => setActiveRefTab('smd')} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeRefTab === 'smd' ? 'bg-teal-100 text-teal-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>SMD Коды</button>
-          <button onClick={() => setActiveRefTab('divider')} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeRefTab === 'divider' ? 'bg-teal-100 text-teal-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Делитель / LED</button>
-          <button onClick={() => setActiveRefTab('datasheet')} className={`px-4 py-2 rounded-lg font-bold transition-all ${activeRefTab === 'datasheet' ? 'bg-teal-100 text-teal-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Даташиты (AI)</button>
+       {/* Tabs */}
+       <div className="flex gap-2 overflow-x-auto pb-2 mb-6 no-scrollbar">
+          <button onClick={() => setActiveRefTab('esr')} className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${activeRefTab === 'esr' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>ESR Таблица</button>
+          <button onClick={() => setActiveRefTab('smd')} className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${activeRefTab === 'smd' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>SMD Калькулятор</button>
+          <button onClick={() => setActiveRefTab('divider')} className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${activeRefTab === 'divider' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Делитель / LED</button>
+          <button onClick={() => setActiveRefTab('datasheet')} className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all ${activeRefTab === 'datasheet' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Datasheet AI</button>
        </div>
 
-       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-h-[500px]">
+       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 min-h-[400px]">
           {activeRefTab === 'esr' && (
-             <div>
+             <div className="animate-fade-in">
                 <div className="flex justify-between items-center mb-4">
-                   <h3 className="text-xl font-bold">Таблица ESR электролитических конденсаторов</h3>
-                   <div className="flex bg-slate-100 rounded p-1">
-                      <button onClick={() => setEsrMode('std')} className={`px-3 py-1 rounded text-xs font-bold ${esrMode === 'std' ? 'bg-white shadow' : 'text-slate-500'}`}>Стандарт</button>
-                      <button onClick={() => setEsrMode('low')} className={`px-3 py-1 rounded text-xs font-bold ${esrMode === 'low' ? 'bg-white shadow' : 'text-slate-500'}`}>Low ESR</button>
+                   <h3 className="font-bold text-lg text-slate-700">Таблица ESR конденсаторов</h3>
+                   <div className="flex bg-slate-100 p-1 rounded-lg">
+                      <button onClick={() => setEsrMode('std')} className={`px-3 py-1 rounded text-xs font-bold transition-all ${esrMode === 'std' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Standard</button>
+                      <button onClick={() => setEsrMode('low')} className={`px-3 py-1 rounded text-xs font-bold transition-all ${esrMode === 'low' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Low ESR</button>
                    </div>
                 </div>
                 <div className="overflow-x-auto">
-                   <table className="w-full text-sm text-left border-collapse">
+                   <table className="w-full text-sm text-center border-collapse">
                       <thead>
-                         <tr className="bg-slate-50 text-slate-600">
-                            <th className="p-2 border">Емкость</th><th className="p-2 border">10V</th><th className="p-2 border">16V</th><th className="p-2 border">25V</th><th className="p-2 border">63V</th>
+                         <tr className="bg-slate-50 text-slate-500">
+                            <th className="p-2 border border-slate-200">Cap / Volt</th>
+                            <th className="p-2 border border-slate-200">10V</th>
+                            <th className="p-2 border border-slate-200">16V</th>
+                            <th className="p-2 border border-slate-200">25V</th>
+                            <th className="p-2 border border-slate-200">63V</th>
                          </tr>
                       </thead>
                       <tbody>
                          {(esrMode === 'std' ? ESR_DATA_STD : ESR_DATA_LOW).map((row, i) => (
-                            <tr key={i} className="hover:bg-slate-50 border-b">
-                               <td className="p-2 border font-bold">{row.cap}</td><td className="p-2 border font-mono">{row.v10}</td><td className="p-2 border font-mono">{row.v16}</td><td className="p-2 border font-mono">{row.v25}</td><td className="p-2 border font-mono">{row.v63}</td>
+                            <tr key={i} className="hover:bg-slate-50">
+                               <td className="p-2 border border-slate-200 font-bold text-slate-700 bg-slate-50/50">{row.cap}</td>
+                               <td className="p-2 border border-slate-200">{row.v10}</td>
+                               <td className="p-2 border border-slate-200">{row.v16}</td>
+                               <td className="p-2 border border-slate-200">{row.v25}</td>
+                               <td className="p-2 border border-slate-200">{row.v63}</td>
                             </tr>
                          ))}
                       </tbody>
                    </table>
                 </div>
+                <p className="text-xs text-slate-400 mt-4 italic">* Значения в Омах (Ω). Для Low ESR конденсаторов (материнские платы, ИБП) значения должны быть минимальны.</p>
              </div>
           )}
 
           {activeRefTab === 'smd' && (
-             <div className="max-w-md mx-auto text-center py-10">
-                <h3 className="text-xl font-bold mb-6">Калькулятор SMD резисторов</h3>
-                <input type="text" className="w-full text-4xl text-center font-mono border-2 border-slate-300 rounded-lg p-4 uppercase tracking-widest mb-6 focus:border-teal-500 outline-none" placeholder="103" maxLength={4} value={smdCode} onChange={(e) => setSmdCode(e.target.value)} />
-                <div className="text-5xl font-bold text-teal-600 mb-2">{calculateSMD(smdCode)}</div>
-                <div className="text-slate-400 text-sm">Поддерживает 3-х и 4-х значную маркировку, а также R (точка)</div>
+             <div className="max-w-md mx-auto text-center animate-fade-in py-10">
+                <Calculator className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+                <h3 className="font-bold text-xl mb-6">Маркировка резисторов</h3>
+                <input 
+                  type="text" 
+                  value={smdCode} 
+                  onChange={(e) => setSmdCode(e.target.value)} 
+                  className="text-4xl font-mono text-center border-2 border-slate-300 rounded-xl p-4 w-full uppercase outline-none focus:border-blue-500 transition-colors mb-6" 
+                  placeholder="103" 
+                  maxLength={4}
+                />
+                <div className="bg-slate-50 rounded-xl p-6 border border-slate-100">
+                   <div className="text-sm text-slate-500 uppercase font-bold mb-2">Сопротивление</div>
+                   <div className="text-3xl font-bold text-blue-600">{calculateSMD(smdCode)}</div>
+                </div>
+                <div className="mt-8 text-left text-xs text-slate-400">
+                   <p>Примеры:</p>
+                   <ul className="list-disc pl-4 space-y-1 mt-1">
+                      <li><b>103</b> = 10 * 10^3 = 10 000 Ω = 10 kΩ</li>
+                      <li><b>4R7</b> = 4.7 Ω</li>
+                      <li><b>01C</b> (EIA-96) = 10 kΩ (по таблице) - <i>пока не поддерживается</i></li>
+                   </ul>
+                </div>
              </div>
           )}
 
           {activeRefTab === 'divider' && (
-             <div className="grid md:grid-cols-2 gap-10">
-                <div>
-                   <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Calculator className="w-5 h-5"/> Делитель напряжения</h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
+                {/* Voltage Divider */}
+                <div className="bg-slate-50 p-6 rounded-xl border border-slate-100">
+                   <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Zap className="w-4 h-4 text-yellow-500"/> Делитель напряжения</h3>
                    <div className="space-y-4">
-                      <div className="flex gap-2 items-center"><label className="w-16 text-sm font-bold">Vin (V)</label><input type="number" className="border p-2 rounded w-full" value={dividerValues.vin} onChange={e => setDividerValues({...dividerValues, vin: Number(e.target.value)})} /></div>
-                      <div className="flex gap-2 items-center"><label className="w-16 text-sm font-bold">R1 (Ω)</label><input type="number" className="border p-2 rounded w-full" value={dividerValues.r1} onChange={e => setDividerValues({...dividerValues, r1: Number(e.target.value)})} /></div>
-                      <div className="flex gap-2 items-center"><label className="w-16 text-sm font-bold">R2 (Ω)</label><input type="number" className="border p-2 rounded w-full" value={dividerValues.r2} onChange={e => setDividerValues({...dividerValues, r2: Number(e.target.value)})} /></div>
-                      <div className="bg-slate-100 p-4 rounded text-center"><div className="text-xs text-slate-500 uppercase">Vout</div><div className="text-2xl font-bold text-slate-800">{calculateDividerVout()} V</div></div>
+                      <div><label className="text-xs font-bold text-slate-500">Vin (Вольт)</label><input type="number" className="w-full p-2 border rounded" value={dividerValues.vin} onChange={e => setDividerValues({...dividerValues, vin: parseFloat(e.target.value) || 0})} /></div>
+                      <div><label className="text-xs font-bold text-slate-500">R1 (Ом)</label><input type="number" className="w-full p-2 border rounded" value={dividerValues.r1} onChange={e => setDividerValues({...dividerValues, r1: parseFloat(e.target.value) || 0})} /></div>
+                      <div><label className="text-xs font-bold text-slate-500">R2 (Ом)</label><input type="number" className="w-full p-2 border rounded" value={dividerValues.r2} onChange={e => setDividerValues({...dividerValues, r2: parseFloat(e.target.value) || 0})} /></div>
+                      <div className="pt-4 border-t border-slate-200 mt-2">
+                         <div className="text-xs font-bold text-slate-500 uppercase">Vout (Выход)</div>
+                         <div className="text-3xl font-bold text-indigo-600">{calculateDividerVout()} V</div>
+                      </div>
                    </div>
                 </div>
-                <div>
-                   <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Lightbulb className="w-5 h-5"/> Резистор для LED</h3>
+                {/* LED Resistor */}
+                <div className="bg-slate-50 p-6 rounded-xl border border-slate-100">
+                   <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Lightbulb className="w-4 h-4 text-orange-500"/> Резистор для LED</h3>
                    <div className="space-y-4">
-                      <div className="flex gap-2 items-center"><label className="w-24 text-sm font-bold">Vпит (V)</label><input type="number" className="border p-2 rounded w-full" value={ledValues.vsource} onChange={e => setLedValues({...ledValues, vsource: Number(e.target.value)})} /></div>
-                      <div className="flex gap-2 items-center"><label className="w-24 text-sm font-bold">Vled (V)</label><input type="number" className="border p-2 rounded w-full" value={ledValues.vled} onChange={e => setLedValues({...ledValues, vled: Number(e.target.value)})} /></div>
-                      <div className="flex gap-2 items-center"><label className="w-24 text-sm font-bold">I (mA)</label><input type="number" className="border p-2 rounded w-full" value={ledValues.current} onChange={e => setLedValues({...ledValues, current: Number(e.target.value)})} /></div>
-                      <div className="bg-slate-100 p-4 rounded text-center flex justify-around">
-                         <div><div className="text-xs text-slate-500 uppercase">R (Ohm)</div><div className="text-2xl font-bold text-slate-800">{calculateLedResistor().r} Ω</div></div>
-                         <div><div className="text-xs text-slate-500 uppercase">Power (W)</div><div className="text-2xl font-bold text-slate-800">{calculateLedResistor().p} W</div></div>
+                      <div><label className="text-xs font-bold text-slate-500">Источник (V)</label><input type="number" className="w-full p-2 border rounded" value={ledValues.vsource} onChange={e => setLedValues({...ledValues, vsource: parseFloat(e.target.value) || 0})} /></div>
+                      <div><label className="text-xs font-bold text-slate-500">Напряжение LED (V)</label><input type="number" className="w-full p-2 border rounded" value={ledValues.vled} onChange={e => setLedValues({...ledValues, vled: parseFloat(e.target.value) || 0})} /></div>
+                      <div><label className="text-xs font-bold text-slate-500">Ток LED (mA)</label><input type="number" className="w-full p-2 border rounded" value={ledValues.current} onChange={e => setLedValues({...ledValues, current: parseFloat(e.target.value) || 0})} /></div>
+                      <div className="pt-4 border-t border-slate-200 mt-2">
+                         <div className="text-xs font-bold text-slate-500 uppercase">Резистор</div>
+                         <div className="text-3xl font-bold text-indigo-600">{calculateLedResistor().r} Ω</div>
+                         <div className="text-xs text-slate-400 mt-1">Мощность: {calculateLedResistor().p} Вт</div>
                       </div>
                    </div>
                 </div>
@@ -1285,18 +1421,33 @@ const App: React.FC = () => {
           )}
 
           {activeRefTab === 'datasheet' && (
-             <div>
+             <div className="animate-fade-in flex flex-col h-full">
                 <div className="flex gap-2 mb-6">
-                   <input type="text" className="flex-1 border-2 border-slate-300 rounded-lg px-4 py-2 outline-none focus:border-teal-500 font-mono uppercase" placeholder="Введите маркировку (напр. IRF3205)" value={datasheetQuery} onChange={(e) => setDatasheetQuery(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleDatasheetSearch()} />
-                   <button onClick={handleDatasheetSearch} disabled={isDatasheetLoading} className="bg-teal-600 text-white px-6 rounded-lg font-bold hover:bg-teal-700 transition-colors">{isDatasheetLoading ? <RefreshCw className="w-5 h-5 animate-spin"/> : <Search className="w-5 h-5"/>}</button>
+                   <input 
+                     type="text" 
+                     className="flex-1 border border-slate-300 rounded-lg px-4 py-2 outline-none focus:border-blue-500"
+                     placeholder="Введите компонент (например: IRF3205, NE555)..."
+                     value={datasheetQuery}
+                     onChange={(e) => setDatasheetQuery(e.target.value)}
+                     onKeyDown={(e) => e.key === 'Enter' && handleDatasheetSearch()}
+                   />
+                   <button onClick={handleDatasheetSearch} disabled={isDatasheetLoading} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:bg-slate-300">
+                      {isDatasheetLoading ? <RefreshCw className="w-5 h-5 animate-spin"/> : <Search className="w-5 h-5"/>}
+                   </button>
+                   <button onClick={openAllDatasheet} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-lg font-bold hover:bg-slate-200" title="Искать на Alldatasheet">
+                      <ExternalLink className="w-5 h-5"/>
+                   </button>
                 </div>
-                {datasheetResult && (
-                   <div className="bg-slate-50 p-6 rounded-lg border border-slate-200 relative animate-fade-in">
-                      <h4 className="font-bold text-lg mb-2">Результат AI поиска:</h4>
-                      <div className="prose prose-sm text-slate-700 whitespace-pre-wrap">{datasheetResult}</div>
-                      <div className="mt-4 pt-4 border-t border-slate-200">
-                         <button onClick={openAllDatasheet} className="text-blue-600 hover:underline flex items-center gap-1 text-sm font-bold"><ExternalLink className="w-4 h-4"/> Искать PDF на AllDatasheet</button>
-                      </div>
+                
+                {datasheetResult ? (
+                   <div className="prose prose-sm max-w-none bg-slate-50 p-6 rounded-xl border border-slate-100 flex-1 overflow-y-auto">
+                      {datasheetResult.split('\n').map((line, i) => <p key={i} className="my-1">{line}</p>)}
+                   </div>
+                ) : (
+                   <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                      <Search className="w-16 h-16 mb-4 opacity-20"/>
+                      <p>Введите название микросхемы или транзистора</p>
+                      <p className="text-xs opacity-60">AI найдет характеристики и цоколевку</p>
                    </div>
                 )}
              </div>
@@ -1305,34 +1456,40 @@ const App: React.FC = () => {
     </div>
   );
 
-  const renderKnowledgeView = () => (
+  const renderKnowledge = () => (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
-       <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-2 mb-2"><BrainCircuit className="w-8 h-8 text-purple-600" />База знаний дефектов</h2>
-       <p className="text-slate-500 mb-8">Типовые неисправности и методы решения, собранные сообществом.</p>
+       <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BrainCircuit className="w-6 h-6 text-indigo-500" /> База типовых неисправностей</h2>
        
        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {KNOWLEDGE_BASE.map((item, i) => (
-             <div key={i} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow">
-                <div className="p-6 cursor-pointer" onClick={() => setExpandedKnowledge(expandedKnowledge === item.title ? null : item.title)}>
-                   <div className="flex items-start justify-between mb-4">
-                      <div className="p-3 bg-slate-50 rounded-lg">{item.icon}</div>
-                      {expandedKnowledge === item.title ? <ChevronUp className="w-5 h-5 text-slate-400"/> : <ChevronDown className="w-5 h-5 text-slate-400"/>}
+          {KNOWLEDGE_BASE.map((item, idx) => (
+             <div key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-all group">
+                <div 
+                   className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between cursor-pointer"
+                   onClick={() => setExpandedKnowledge(expandedKnowledge === item.title ? null : item.title)}
+                >
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 bg-white rounded-lg shadow-sm">{item.icon}</div>
+                      <div>
+                         <h3 className="font-bold text-slate-800 leading-tight">{item.title}</h3>
+                         <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>
+                      </div>
                    </div>
-                   <h3 className="text-xl font-bold text-slate-800 mb-1">{item.title}</h3>
-                   <p className="text-sm text-slate-500">{item.description}</p>
+                   <div className={`transition-transform duration-300 ${expandedKnowledge === item.title ? 'rotate-180' : ''}`}>
+                      <ChevronDown className="w-5 h-5 text-slate-400 group-hover:text-blue-500"/>
+                   </div>
                 </div>
+                
                 {expandedKnowledge === item.title && (
-                   <div className="px-6 pb-6 bg-slate-50 border-t border-slate-100 animate-slide-down">
-                      <div className="space-y-4 pt-4">
-                         {item.issues.map((issue, idx) => (
-                            <div key={idx} className="bg-white p-3 rounded border border-slate-200">
-                               <div className="flex items-start gap-2 mb-2">
-                                  <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                                  <span className="font-bold text-sm text-slate-800">{issue.problem}</span>
+                   <div className="p-4 bg-white animate-slide-down">
+                      <div className="space-y-4">
+                         {item.issues.map((issue, i) => (
+                            <div key={i} className="text-sm">
+                               <div className="flex items-start gap-2 mb-1">
+                                  <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0"/>
+                                  <span className="font-bold text-slate-700">{issue.problem}</span>
                                </div>
-                               <div className="flex items-start gap-2 pl-6">
-                                  <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                                  <span className="text-sm text-slate-600 leading-relaxed">{issue.solution}</span>
+                               <div className="pl-6 text-slate-600 leading-relaxed border-l-2 border-slate-100 ml-2">
+                                  {issue.solution}
                                </div>
                             </div>
                          ))}
@@ -1345,21 +1502,40 @@ const App: React.FC = () => {
     </div>
   );
 
+  // --- MAIN RENDER ---
   return (
-    <div className="flex bg-slate-100 min-h-screen font-sans text-slate-900">
-      {/* WorkshopRobot MOVED HERE to be outside of the sidebar container context */}
-      <WorkshopRobot />
-      
+    <div className="flex min-h-screen bg-slate-100 font-sans text-slate-900">
       {renderSidebar()}
-      <main className="flex-1 md:ml-64 relative min-h-screen pb-20 md:pb-0">
-         {view === 'repair' && renderRepairView()}
-         {view === 'planning' && renderPlanningView()}
-         {view === 'inventory' && renderInventoryView()}
-         {view === 'print' && <Printables devices={sortedDevices} />}
-         {view === 'ai_chat' && renderAiChatView()}
-         {view === 'references' && renderReferencesView()}
-         {view === 'knowledge' && renderKnowledgeView()}
+      
+      <main className="flex-1 md:ml-64 relative min-h-screen flex flex-col">
+        {view === 'repair' && renderRepairView()}
+        {view === 'planning' && (
+           <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                 <CalendarCheck className="w-8 h-8 text-blue-600"/> План работ на завтра
+              </h2>
+              {devices.filter(d => d.isPlanned).length === 0 ? (
+                 <div className="bg-white p-12 rounded-xl border border-slate-200 text-center">
+                    <div className="inline-block p-4 bg-green-100 rounded-full mb-4"><CheckCircle className="w-8 h-8 text-green-600"/></div>
+                    <p className="text-lg text-slate-600 font-medium">План пуст. Отдыхаем?</p>
+                    <p className="text-slate-400 text-sm mt-2">Отметьте устройства значком календаря в списке ремонтов.</p>
+                 </div>
+              ) : (
+                 <div className="grid gap-4">
+                    {devices.filter(d => d.isPlanned).map(device => renderDeviceCard(device))}
+                 </div>
+              )}
+           </div>
+        )}
+        {view === 'inventory' && renderInventoryView()}
+        {view === 'print' && <Printables devices={devices} />}
+        {view === 'ai_chat' && renderAIChat()}
+        {view === 'references' && renderReferences()}
+        {view === 'knowledge' && renderKnowledge()}
       </main>
+
+      {/* Helper Robot */}
+      <WorkshopRobot />
     </div>
   );
 };
