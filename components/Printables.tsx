@@ -84,9 +84,9 @@ export const Printables: React.FC<PrintablesProps> = ({ devices }) => {
     }
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4 print:h-[100vh] print:content-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:grid-cols-2 print:gap-4 print:content-start">
         {itemsToPrint.map((device, i) => (
-          <div key={device.id || i} className="border-2 border-dashed border-gray-800 p-4 bg-white relative flex flex-col print:h-[135mm] print:break-inside-avoid print:mb-2 shadow-sm print:shadow-none">
+          <div key={device.id || i} className="border-2 border-dashed border-gray-800 p-4 bg-white relative flex flex-col print:break-inside-avoid print:mb-2 shadow-sm print:shadow-none">
             <div className="absolute top-2 right-2 text-gray-400 print:text-gray-600">
               <Scissors className="w-5 h-5" />
             </div>
@@ -98,7 +98,7 @@ export const Printables: React.FC<PrintablesProps> = ({ devices }) => {
             </div>
             
             {/* Body */}
-            <div className="flex-grow space-y-3 font-mono text-sm">
+            <div className="flex-grow space-y-3 font-mono text-sm mb-2">
               <div className="flex flex-col">
                 <span className="font-bold text-[10px] uppercase text-gray-500 mb-0.5">Модель / Устройство:</span>
                 <div className="border-b border-gray-400 min-h-[2.5em] pb-1 text-base font-bold leading-tight break-words line-clamp-2">
@@ -143,17 +143,6 @@ export const Printables: React.FC<PrintablesProps> = ({ devices }) => {
                 </div>
               </div>
             </div>
-
-            {/* Footer */}
-            <div className="mt-2 pt-2 border-t border-black flex justify-between items-end">
-               <div className="text-[9px] text-gray-500 w-2/3 leading-tight pr-2 text-justify">
-                  Оборудование принято на диагностику. Сервис не несет ответственности за скрытые дефекты. Срок хранения - 30 дней после уведомления.
-               </div>
-               <div className="text-right flex-shrink-0">
-                  <div className="border-b border-black w-24 mb-1"></div>
-                  <div className="text-[8px] text-center uppercase text-gray-600">Подпись клиента</div>
-               </div>
-            </div>
           </div>
         ))}
       </div>
@@ -164,7 +153,7 @@ export const Printables: React.FC<PrintablesProps> = ({ devices }) => {
     return (
       <div className="flex flex-col gap-8 print:gap-0 print:block">
         {Array.from({ length: actCount }).map((_, i) => (
-          <div key={i} className={`bg-white p-8 border border-gray-200 shadow-sm relative print:shadow-none print:border-none print:p-0 print:h-[49.5vh] print:flex print:flex-col print:justify-between print:mb-0 box-border ${i % 2 !== 0 ? 'print:pt-8 border-t-2 print:border-t-0' : ''}`}>
+          <div key={i} className={`bg-white p-8 border border-gray-200 shadow-sm relative print:shadow-none print:border-none print:p-0 print:h-[148mm] print:flex print:flex-col print:justify-between print:mb-0 box-border ${i % 2 !== 0 ? 'print:pt-8 border-t-2 print:border-t-0' : ''} print:break-inside-avoid`}>
              
              {/* Линия отреза для печати (появляется только между двумя актами на странице) */}
              {i % 2 !== 0 && (
@@ -387,7 +376,6 @@ export const Printables: React.FC<PrintablesProps> = ({ devices }) => {
       </div>
 
       {/* Preview Area (Visible on Screen) & Print Area */}
-      {/* Added ID printable-root for targeted print styles */}
       <div className="flex-1 p-4 md:p-8 overflow-auto print:p-0 print:overflow-visible flex justify-center bg-gray-100 print:bg-white print:block">
         <div id="printable-root" className="w-[210mm] min-h-[297mm] bg-white shadow-xl p-[10mm] print:shadow-none print:p-0 print:w-full print:min-h-0 transition-all origin-top scale-90 md:scale-100 print:scale-100">
           {printMode === 'seals' && renderSeals()}

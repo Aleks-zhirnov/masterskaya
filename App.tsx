@@ -336,8 +336,16 @@ const KNOWLEDGE_BASE = [
   }
 ];
 
+interface EsrRow {
+  cap: string;
+  v10: string;
+  v16: string;
+  v25: string;
+  v63: string;
+}
+
 // Данные для таблицы ESR (STANDARD)
-const ESR_DATA_STD = [
+const ESR_DATA_STD: EsrRow[] = [
   { cap: '1 uF', v10: '5.0', v16: '4.0', v25: '3.0', v63: '2.4' },
   { cap: '2.2 uF', v10: '3.5', v16: '3.0', v25: '2.5', v63: '1.8' },
   { cap: '4.7 uF', v10: '2.8', v16: '2.3', v25: '1.9', v63: '1.3' },
@@ -352,7 +360,7 @@ const ESR_DATA_STD = [
 ];
 
 // Данные для таблицы Low ESR
-const ESR_DATA_LOW = [
+const ESR_DATA_LOW: EsrRow[] = [
   { cap: '1 uF', v10: '-', v16: '-', v25: '-', v63: '-' },
   { cap: '4.7 uF', v10: '-', v16: '-', v25: '-', v63: '-' },
   { cap: '10 uF', v10: '0.58', v16: '0.45', v25: '0.38', v63: '0.28' },
@@ -735,7 +743,7 @@ const App: React.FC = () => {
      });
   }, [devices, sortMethod]);
 
-  const groupedDevices = useMemo(() => {
+  const groupedDevices = useMemo<Record<string, Device[]> | null>(() => {
       if (!groupByClient) return null;
       
       const groups: Record<string, Device[]> = {};
@@ -1103,7 +1111,7 @@ const App: React.FC = () => {
         {sortedDevices.length === 0 ? (
           <div className="text-center py-12 md:py-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"><Package className="w-12 h-12 md:w-16 md:h-16 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-lg">Нет устройств</p></div>
         ) : groupByClient && groupedDevices ? (
-            Object.entries(groupedDevices).map(([client, clientDevices]) => (
+            Object.entries(groupedDevices).map(([client, clientDevices]: [string, Device[]]) => (
                 <div key={client} className="mb-4">
                     <div className="flex items-center gap-2 mb-2 px-1">
                         <Users className="w-5 h-5 text-slate-400" />
