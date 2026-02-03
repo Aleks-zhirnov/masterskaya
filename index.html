@@ -74,6 +74,13 @@
           visibility: hidden;
         }
         
+        /* Сбрасываем ограничения для html/body чтобы печать не обрезалась */
+        html, body {
+          height: auto !important;
+          overflow: visible !important;
+          background: white !important;
+        }
+
         /* Делаем видимым только контейнер с документом и его содержимое */
         #printable-root, #printable-root * {
           visibility: visible;
@@ -81,20 +88,21 @@
 
         /* Позиционируем документ поверх всего */
         #printable-root {
-          position: fixed;
+          position: absolute;
           left: 0;
           top: 0;
-          width: 100vw;
-          height: 100vh;
+          width: 100%;
+          height: auto !important;
           margin: 0;
           padding: 0;
           z-index: 9999;
           background: white;
+          overflow: visible !important;
         }
 
         /* Убираем отступы страницы браузера */
         @page {
-          margin: 0;
+          margin: 10mm;
           size: auto;
         }
 

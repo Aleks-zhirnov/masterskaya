@@ -44,7 +44,9 @@ import {
   ListFilter,
   Pencil,
   Users,
-  LayoutList
+  LayoutList,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
 import { generateWorkshopAdvice } from './services/ai';
@@ -52,7 +54,6 @@ import { Printables } from './components/Printables';
 
 // --- CONSTANTS ---
 
-// Справочник категорий радиодеталей
 const RADIO_SUBCATEGORIES: Record<PartType, string[]> = {
   [PartType.CAPACITOR]: ['Электролитические', 'Керамические (SMD)', 'Керамические (Выводные)', 'Танталовые', 'Пленочные', 'Пусковые'],
   [PartType.RESISTOR]: ['0.125Вт', '0.25Вт', '0.5Вт', '1Вт', '2Вт', '5Вт (Цемент)', 'SMD 0805', 'SMD 0603', 'SMD 1206', 'Переменные (Потенциометры)'],
@@ -67,7 +68,6 @@ const RADIO_SUBCATEGORIES: Record<PartType, string[]> = {
   [PartType.OTHER]: ['Провода', 'Термоусадка', 'Припой/Флюс', 'Винты/Гайки', 'Радиаторы', 'Корпуса']
 };
 
-// Данные для базы знаний (FULL EDITION)
 const KNOWLEDGE_BASE = [
   {
     title: 'Робот-пылесосы (Xiaomi, Roborock, iRobot)',
@@ -336,7 +336,6 @@ const KNOWLEDGE_BASE = [
   }
 ];
 
-// Данные для таблицы ESR (STANDARD)
 const ESR_DATA_STD = [
   { cap: '1 uF', v10: '5.0', v16: '4.0', v25: '3.0', v63: '2.4' },
   { cap: '2.2 uF', v10: '3.5', v16: '3.0', v25: '2.5', v63: '1.8' },
@@ -351,7 +350,6 @@ const ESR_DATA_STD = [
   { cap: '2200 uF', v10: '0.08', v16: '0.06', v25: '0.05', v63: '0.04' },
 ];
 
-// Данные для таблицы Low ESR
 const ESR_DATA_LOW = [
   { cap: '1 uF', v10: '-', v16: '-', v25: '-', v63: '-' },
   { cap: '4.7 uF', v10: '-', v16: '-', v25: '-', v63: '-' },
@@ -368,26 +366,26 @@ const ESR_DATA_LOW = [
 
 // --- SERVICE LAYER FOR DATA ---
 
+const STORAGE_KEYS = {
+  DEVICES: 'workshop_devices',
+  PARTS: 'workshop_parts'
+};
+
 const api = {
-  // Безопасный метод запроса с проверкой типа контента
+  isOffline: false,
+
   request: async (url: string, options?: RequestInit) => {
     try {
       const res = await fetch(url, options);
       const contentType = res.headers.get("content-type");
       
+      // Если сервер возвращает HTML (404 от Vite SPA или ошибка), считаем это сбоем API
       if (contentType && contentType.includes("text/html")) {
-        throw new Error("API вернул HTML. Возможно, вы в локальном режиме или произошла ошибка сервера.");
+        throw new Error("API вернул HTML (возможно 404)");
       }
 
       if (!res.ok) {
-        let errorMsg = `Ошибка сервера: ${res.status}`;
-        try {
-          if (contentType && contentType.includes("application/json")) {
-            const errData = await res.json();
-            errorMsg = errData.error || errorMsg;
-          }
-        } catch (e) { }
-        throw new Error(errorMsg);
+        throw new Error(`Ошибка сервера: ${res.status}`);
       }
 
       try {
@@ -401,34 +399,91 @@ const api = {
   },
 
   initCloud: async () => {
-    return api.request('/api/seed');
+    try {
+      await api.request('/api/seed');
+      api.isOffline = false;
+    } catch (e) {
+      console.warn("Backend unavailable (404/Error), switching to Offline Mode.", e);
+      api.isOffline = true;
+      // Initialize local storage if empty
+      if (!localStorage.getItem(STORAGE_KEYS.DEVICES)) {
+        localStorage.setItem(STORAGE_KEYS.DEVICES, '[]');
+      }
+      if (!localStorage.getItem(STORAGE_KEYS.PARTS)) {
+        localStorage.setItem(STORAGE_KEYS.PARTS, '[]');
+      }
+    }
   },
   
   getDevices: async () => {
+    if (api.isOffline) {
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.DEVICES) || '[]');
+    }
     return api.request('/api/devices');
   },
+
   saveDevice: async (device: Device) => {
+    if (api.isOffline) {
+      const devices = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEVICES) || '[]');
+      const idx = devices.findIndex((d: Device) => d.id === device.id);
+      if (idx >= 0) {
+        devices[idx] = device;
+      } else {
+        devices.push(device);
+      }
+      localStorage.setItem(STORAGE_KEYS.DEVICES, JSON.stringify(devices));
+      return { success: true };
+    }
     return api.request('/api/devices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(device)
     });
   },
+
   deleteDevice: async (id: string) => {
+    if (api.isOffline) {
+      let devices = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEVICES) || '[]');
+      devices = devices.filter((d: Device) => d.id !== id);
+      localStorage.setItem(STORAGE_KEYS.DEVICES, JSON.stringify(devices));
+      return { success: true };
+    }
     return api.request(`/api/devices?id=${id}`, { method: 'DELETE' });
   },
 
   getParts: async () => {
+    if (api.isOffline) {
+      return JSON.parse(localStorage.getItem(STORAGE_KEYS.PARTS) || '[]');
+    }
     return api.request('/api/parts');
   },
+
   savePart: async (part: SparePart) => {
+    if (api.isOffline) {
+      const parts = JSON.parse(localStorage.getItem(STORAGE_KEYS.PARTS) || '[]');
+      const idx = parts.findIndex((p: SparePart) => p.id === part.id);
+      if (idx >= 0) {
+        parts[idx] = part;
+      } else {
+        parts.push(part);
+      }
+      localStorage.setItem(STORAGE_KEYS.PARTS, JSON.stringify(parts));
+      return { success: true };
+    }
     return api.request('/api/parts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(part)
     });
   },
+
   deletePart: async (id: string) => {
+    if (api.isOffline) {
+      let parts = JSON.parse(localStorage.getItem(STORAGE_KEYS.PARTS) || '[]');
+      parts = parts.filter((p: SparePart) => p.id !== id);
+      localStorage.setItem(STORAGE_KEYS.PARTS, JSON.stringify(parts));
+      return { success: true };
+    }
     return api.request(`/api/parts?id=${id}`, { method: 'DELETE' });
   }
 };
@@ -441,7 +496,6 @@ const WorkshopRobot = () => {
 
   useEffect(() => {
     const fetchFact = async () => {
-      // Пытаемся получить факт от AI
       const prompt = "Расскажи один очень короткий, но интересный и малоизвестный технический факт или лайфхак для инженера-электронщика. Не более 2 предложений. В конце добавь веселый смайлик.";
       const response = await generateWorkshopAdvice(prompt);
       setFact(response);
@@ -520,878 +574,463 @@ const App: React.FC = () => {
   // --- STATE ---
   const [view, setView] = useState<ViewState>('repair');
   
-  // Storage Mode
-  const [storageMode, setStorageMode] = useState<'local' | 'cloud'>('local');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [initLoaded, setInitLoaded] = useState(false);
-
-  // Data State
+  // Data
   const [devices, setDevices] = useState<Device[]>([]);
   const [parts, setParts] = useState<SparePart[]>([]);
-
-  // UI State - Repair
-  const [showAddDeviceModal, setShowAddDeviceModal] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [newDevice, setNewDevice] = useState<Partial<Device>>({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
-  const [sortMethod, setSortMethod] = useState<'date' | 'urgency' | 'status'>('urgency');
-  const [groupByClient, setGroupByClient] = useState(false);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
   
-  // UI State - Inventory
-  const [inventoryTab, setInventoryTab] = useState<'stock' | 'buy'>('stock');
-  const [inventoryFilterType, setInventoryFilterType] = useState<PartType | 'ALL'>('ALL');
-  const [inventoryFilterSubtype, setInventoryFilterSubtype] = useState<string>('ALL');
-  
-  // UI State - Knowledge Base
-  const [expandedKnowledge, setExpandedKnowledge] = useState<string | null>(null);
-
-  // Parts Form State
-  const [newPartName, setNewPartName] = useState('');
-  const [newPartType, setNewPartType] = useState<PartType>(PartType.OTHER);
-  const [newPartSubtype, setNewPartSubtype] = useState<string>('');
-  const [newPartQuantity, setNewPartQuantity] = useState<number>(1);
-
-  // References State
-  const [activeRefTab, setActiveRefTab] = useState<'esr' | 'smd' | 'divider' | 'datasheet'>('esr');
-  const [esrMode, setEsrMode] = useState<'std' | 'low'>('std');
-  const [smdCode, setSmdCode] = useState('');
-  const [dividerValues, setDividerValues] = useState({ vin: 12, r1: 10000, r2: 1000 });
-  const [ledValues, setLedValues] = useState({ vsource: 12, vled: 3, current: 20 });
-  const [datasheetQuery, setDatasheetQuery] = useState('');
-  const [datasheetResult, setDatasheetResult] = useState('');
-  const [isDatasheetLoading, setIsDatasheetLoading] = useState(false);
-
-  // AI Chat State
+  // Chat
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: 'Привет! Я ваш AI-помощник. Спросите про аналоги или диагностику.' }
+    { role: 'model', text: 'Привет! Я AI-помощник мастерской. Чем могу помочь?' }
   ]);
   const [chatInput, setChatInput] = useState('');
-  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
 
-  // --- INITIALIZATION & SYNC ---
+  // Forms
+  const [showAddDevice, setShowAddDevice] = useState(false);
+  const [newDevice, setNewDevice] = useState<Partial<Device>>({
+    clientName: '', deviceModel: '', issueDescription: '', status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL, isPlanned: false
+  });
 
-  const loadLocal = () => {
-    setStorageMode('local');
-    const localDevs = localStorage.getItem('workshop_devices');
-    const localParts = localStorage.getItem('workshop_parts');
-    if (localDevs) setDevices(JSON.parse(localDevs));
-    if (localParts) setParts(JSON.parse(localParts));
-  };
+  const [showAddPart, setShowAddPart] = useState(false);
+  const [newPart, setNewPart] = useState<Partial<SparePart>>({
+    name: '', type: PartType.OTHER, quantity: 1, inStock: true
+  });
 
-  const tryConnectCloud = async () => {
-    setIsSyncing(true);
-    try {
-      await api.initCloud(); 
-      setStorageMode('cloud');
-      
-      const cloudDevices = await api.getDevices();
-      const cloudParts = await api.getParts();
-      
-      return { devices: cloudDevices, parts: cloudParts };
-    } catch (e: any) {
-      console.warn("Cloud connection check failed (falling back to local):", e.message);
-      return null;
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const cleanupOldDevices = async (loadedDevices: Device[]) => {
-    const now = new Date();
-    const idsToDelete: string[] = [];
-    
-    loadedDevices.forEach(d => {
-       if (d.status === DeviceStatus.ISSUED && d.statusChangedAt) {
-          const changedAt = new Date(d.statusChangedAt);
-          const diffTime = Math.abs(now.getTime() - changedAt.getTime());
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-          
-          if (diffDays > 4) {
-             idsToDelete.push(d.id);
-          }
-       }
-    });
-
-    if (idsToDelete.length > 0) {
-       console.log("Auto-deleting old issued devices:", idsToDelete);
-       // Удаляем из стейта
-       const remaining = loadedDevices.filter(d => !idsToDelete.includes(d.id));
-       setDevices(remaining);
-       
-       // Удаляем из БД/LocalStorage
-       if (storageMode === 'local') {
-          localStorage.setItem('workshop_devices', JSON.stringify(remaining));
-       } else {
-          // Последовательно удаляем, чтобы не грузить базу параллельными запросами
-          for (const id of idsToDelete) {
-             await api.deleteDevice(id);
-          }
-       }
-    }
-  };
-
+  // Initialization
   useEffect(() => {
-    const initApp = async () => {
-      const cloudData = await tryConnectCloud();
-      let currentDevices: Device[] = [];
-      
-      if (cloudData) {
-        setDevices(cloudData.devices);
-        setParts(cloudData.parts);
-        currentDevices = cloudData.devices;
-      } else {
-        loadLocal();
-        const localDevs = localStorage.getItem('workshop_devices');
-        if (localDevs) currentDevices = JSON.parse(localDevs);
+    const init = async () => {
+      try {
+        await api.initCloud();
+        setIsOfflineMode(api.isOffline);
+        const [d, p] = await Promise.all([api.getDevices(), api.getParts()]);
+        if (d) setDevices(d);
+        if (p) setParts(p);
+      } catch (err) {
+        console.error("Failed to init data", err);
       }
-      
-      // Запускаем очистку старых заказов
-      await cleanupOldDevices(currentDevices);
-      setInitLoaded(true);
     };
-
-    initApp();
+    init();
   }, []);
 
-  // Update subtype when type changes
-  useEffect(() => {
-    setNewPartSubtype(RADIO_SUBCATEGORIES[newPartType]?.[0] || '');
-  }, [newPartType]);
-
-  // Reset filter subtype when type filter changes
-  useEffect(() => {
-    setInventoryFilterSubtype('ALL');
-  }, [inventoryFilterType]);
-
-  const handleManualConnect = async () => {
-    if (storageMode === 'cloud') return;
-    const cloudData = await tryConnectCloud();
-    if (cloudData) {
-      setDevices(cloudData.devices);
-      setParts(cloudData.parts);
-      alert("Успешно подключено к базе данных Vercel!");
-    } else {
-      alert("Не удалось подключиться к базе данных. Проверьте консоль.");
-    }
-  };
-
-  // --- PERSISTENCE ---
-
-  const persistDevice = async (updatedDevices: Device[], changedDevice?: Device, isDelete?: boolean) => {
-    setDevices(updatedDevices);
-    
-    if (storageMode === 'local') {
-      localStorage.setItem('workshop_devices', JSON.stringify(updatedDevices));
-    } else {
-      setIsSyncing(true);
-      try {
-        if (isDelete && changedDevice) {
-          await api.deleteDevice(changedDevice.id);
-        } else if (changedDevice) {
-          await api.saveDevice(changedDevice);
-        }
-      } catch (e) {
-        console.error("Sync error", e);
-        alert("Ошибка синхронизации с облаком.");
-      } finally {
-        setIsSyncing(false);
-      }
-    }
-  };
-
-  const persistPart = async (updatedParts: SparePart[], changedPart?: SparePart, isDelete?: boolean) => {
-    setParts(updatedParts);
-    if (storageMode === 'local') {
-      localStorage.setItem('workshop_parts', JSON.stringify(updatedParts));
-    } else {
-      setIsSyncing(true);
-      try {
-        if (isDelete && changedPart) {
-          await api.deletePart(changedPart.id);
-        } else if (changedPart) {
-          await api.savePart(changedPart);
-        }
-      } catch (e) { console.error("Sync error", e); } finally { setIsSyncing(false); }
-    }
-  };
-
-  // --- ACTIONS ---
-
-  // MEMOIZATION OPTIMIZATION
-  const sortedDevices = useMemo(() => {
-     return [...devices].sort((a, b) => {
-        if (sortMethod === 'urgency') {
-           const urgencyOrder = { [Urgency.CRITICAL]: 0, [Urgency.HIGH]: 1, [Urgency.NORMAL]: 2 };
-           const uDiff = urgencyOrder[a.urgency || Urgency.NORMAL] - urgencyOrder[b.urgency || Urgency.NORMAL];
-           if (uDiff !== 0) return uDiff;
-           return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
-        }
-        
-        if (sortMethod === 'status') {
-            if (a.status !== b.status) return a.status.localeCompare(b.status);
-            return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
-        }
-
-        return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
-     });
-  }, [devices, sortMethod]);
-
-  const groupedDevices = useMemo(() => {
-      if (!groupByClient) return null;
-      
-      const groups: Record<string, Device[]> = {};
-      sortedDevices.forEach(device => {
-          const client = device.clientName || 'Неизвестный клиент';
-          if (!groups[client]) {
-              groups[client] = [];
-          }
-          groups[client].push(device);
-      });
-      return groups;
-  }, [sortedDevices, groupByClient]);
-
-  // MOVE useMemo HERE
-  const stats = useMemo(() => ({
-      total: devices.length,
-      received: devices.filter(d => d.status === DeviceStatus.RECEIVED).length,
-      inProgress: devices.filter(d => d.status === DeviceStatus.IN_PROGRESS).length,
-      waiting: devices.filter(d => d.status === DeviceStatus.WAITING_PARTS).length,
-      ready: devices.filter(d => d.status === DeviceStatus.READY).length,
-      issued: devices.filter(d => d.status === DeviceStatus.ISSUED).length
-  }), [devices]);
-
-  const getDaysInShop = (dateStr: string) => {
-      const start = new Date(dateStr);
-      const now = new Date();
-      const diffTime = Math.abs(now.getTime() - start.getTime());
-      return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-  };
-
-  const handleSaveDevice = () => {
-    if (!newDevice.clientName || !newDevice.deviceModel) return;
-    
-    let dateReceived = new Date().toISOString();
-    if (newDevice.dateReceived) {
-        // Проверяем, если дата уже ISO, не трогаем, иначе форматируем
-        if (!newDevice.dateReceived.includes('T')) {
-             dateReceived = new Date(newDevice.dateReceived).toISOString();
-        } else {
-             dateReceived = newDevice.dateReceived;
-        }
-    }
-
-    if (editingId) {
-        // Обновление существующего
-        const updatedDevices = devices.map(d => {
-            if (d.id === editingId) {
-                return {
-                    ...d,
-                    ...newDevice,
-                    dateReceived: dateReceived, // Сохраняем дату
-                    // Сохраняем остальные поля, если они были
-                    id: d.id, 
-                    status: newDevice.status || d.status,
-                    urgency: newDevice.urgency || d.urgency,
-                    statusChangedAt: d.status !== newDevice.status ? new Date().toISOString() : d.statusChangedAt
-                } as Device;
-            }
-            return d;
-        });
-        persistDevice(updatedDevices, updatedDevices.find(d => d.id === editingId));
-    } else {
-        // Создание нового
-        const device: Device = {
-          id: Date.now().toString(),
-          clientName: newDevice.clientName,
-          deviceModel: newDevice.deviceModel,
-          issueDescription: newDevice.issueDescription || '',
-          dateReceived: dateReceived,
-          status: DeviceStatus.RECEIVED,
-          urgency: newDevice.urgency || Urgency.NORMAL,
-          notes: '',
-          statusChangedAt: new Date().toISOString()
-        };
-        persistDevice([...devices, device], device);
-    }
-    
-    setNewDevice({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
-    setEditingId(null);
-    setShowAddDeviceModal(false);
-  };
-
-  const handleEditDevice = (device: Device) => {
-      setEditingId(device.id);
-      setNewDevice({
-          clientName: device.clientName,
-          deviceModel: device.deviceModel,
-          issueDescription: device.issueDescription,
-          dateReceived: device.dateReceived,
-          status: device.status,
-          urgency: device.urgency
-      });
-      setShowAddDeviceModal(true);
-  };
-
-  const updateDeviceStatus = (id: string, status: DeviceStatus) => {
-    const updatedDevices = devices.map(d => {
-        if (d.id === id) {
-            return { ...d, status, statusChangedAt: new Date().toISOString() };
-        }
-        return d;
-    });
-    persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
-  };
-
-  const updateDeviceUrgency = (id: string, urgency: Urgency) => {
-    const updatedDevices = devices.map(d => d.id === id ? { ...d, urgency } : d);
-    persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
-  };
-  
-  const toggleDevicePlan = (id: string) => {
-      const updatedDevices = devices.map(d => d.id === id ? { ...d, isPlanned: !d.isPlanned } : d);
-      persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
-  };
-
-  const deleteDevice = (id: string) => {
-    if (confirm('Удалить устройство?')) {
-      const deviceToDelete = devices.find(d => d.id === id);
-      const updatedDevices = devices.filter(d => d.id !== id);
-      persistDevice(updatedDevices, deviceToDelete, true);
-    }
-  };
-
-  const addPart = () => {
-    if (!newPartName) return;
-    const part: SparePart = {
-      id: Date.now().toString(),
-      name: newPartName,
-      type: newPartType,
-      subtype: newPartSubtype,
-      quantity: newPartQuantity > 0 ? newPartQuantity : 1,
-      inStock: inventoryTab === 'stock'
-    };
-    persistPart([...parts, part], part);
-    setNewPartName('');
-    setNewPartQuantity(1);
-  };
-
-  const updatePartQuantity = (id: string, delta: number) => {
-    const part = parts.find(p => p.id === id);
-    if (!part) return;
-    const newQuantity = (part.quantity || 0) + delta;
-    if (newQuantity < 0) return;
-    const updatedPart = { ...part, quantity: newQuantity };
-    const updatedParts = parts.map(p => p.id === id ? updatedPart : p);
-    persistPart(updatedParts, updatedPart);
-  };
-
-  const togglePartStockStatus = (id: string) => {
-    const updatedParts = parts.map(p => p.id === id ? { ...p, inStock: !p.inStock } : p);
-    persistPart(updatedParts, updatedParts.find(p => p.id === id));
-  };
-
-  const deletePart = (id: string) => {
-    const partToDelete = parts.find(p => p.id === id);
-    const updatedParts = parts.filter(p => p.id !== id);
-    persistPart(updatedParts, partToDelete, true);
-  };
-
+  // Handlers
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     const userMsg: ChatMessage = { role: 'user', text: chatInput };
     setChatMessages(prev => [...prev, userMsg]);
     setChatInput('');
-    setIsChatLoading(true);
-    const prompt = `Контекст: Мастерская. В ремонте: ${devices.map(d => `${d.deviceModel} (${d.issueDescription})`).join(', ')}. Вопрос: ${userMsg.text}`;
-    const responseText = await generateWorkshopAdvice(prompt);
-    setIsChatLoading(false);
-    setChatMessages(prev => [...prev, { role: 'model', text: responseText }]);
+    setAiLoading(true);
+
+    const response = await generateWorkshopAdvice(chatInput);
+    setChatMessages(prev => [...prev, { role: 'model', text: response }]);
+    setAiLoading(false);
   };
 
-  // --- HELPERS ---
-  const calculateSMD = (code: string) => {
-    if (!code) return '---';
-    const cleanCode = code.toUpperCase().trim();
-    if (cleanCode.includes('R')) return `${cleanCode.replace('R', '.')} Ω`;
-    if (/^\d+$/.test(cleanCode)) {
-      const digits = cleanCode.split('').map(Number);
-      const multiplier = Math.pow(10, digits.pop()!);
-      const base = parseInt(digits.join(''));
-      const val = base * multiplier;
-      if (val >= 1000000) return `${val/1000000} MΩ`;
-      if (val >= 1000) return `${val/1000} kΩ`;
-      return `${val} Ω`;
-    }
-    return 'Некорректный код';
-  };
-  const calculateDividerVout = () => {
-    const { vin, r1, r2 } = dividerValues;
-    if (!r1 || !r2) return 0;
-    return (vin * r2 / (r1 + r2)).toFixed(2);
-  };
-  const calculateLedResistor = () => {
-    const { vsource, vled, current } = ledValues;
-    if (vsource <= vled || current === 0) return { r: 0, p: 0 };
-    const r = (vsource - vled) / (current / 1000);
-    const p = Math.pow(current / 1000, 2) * r;
-    return { r: Math.ceil(r), p: p.toFixed(2) };
-  };
-  const handleDatasheetSearch = async () => {
-    if (!datasheetQuery.trim()) return;
-    setIsDatasheetLoading(true);
-    setDatasheetResult('');
-    const prompt = `ЗАПРОС ДАТАШИТА: Найди информацию по компоненту "${datasheetQuery}". Дай ответ в формате: 1. Тип компонента 2. Краткое описание 3. Цоколевка (Pinout) 4. Основные характеристики 5. Популярные аналоги.`;
-    const result = await generateWorkshopAdvice(prompt);
-    setDatasheetResult(result);
-    setIsDatasheetLoading(false);
-  };
-  const openAllDatasheet = () => {
-    if (!datasheetQuery.trim()) return;
-    const url = `https://www.alldatasheet.com/view.jsp?Searchword=${encodeURIComponent(datasheetQuery)}`;
-    window.open(url, '_blank');
+  const handleAddDevice = async () => {
+    if (!newDevice.clientName || !newDevice.deviceModel) return;
+    const dev: Device = {
+      id: Date.now().toString(),
+      clientName: newDevice.clientName!,
+      deviceModel: newDevice.deviceModel!,
+      issueDescription: newDevice.issueDescription || '',
+      dateReceived: new Date().toISOString(),
+      status: newDevice.status as DeviceStatus,
+      urgency: newDevice.urgency as Urgency,
+      notes: newDevice.notes,
+      isPlanned: newDevice.isPlanned,
+      statusChangedAt: new Date().toISOString()
+    };
+    await api.saveDevice(dev);
+    setDevices(prev => [...prev, dev]);
+    setShowAddDevice(false);
+    setNewDevice({ clientName: '', deviceModel: '', issueDescription: '', status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL, isPlanned: false });
   };
 
-  const getUrgencyColor = (u: Urgency) => {
-    switch (u) {
-      case Urgency.CRITICAL: return 'bg-red-100 text-red-700 border-red-200';
-      case Urgency.HIGH: return 'bg-orange-100 text-orange-700 border-orange-200';
-      default: return 'bg-slate-100 text-slate-600 border-slate-200';
-    }
-  };
-  
-  const getUrgencyLabel = (u: Urgency) => {
-    switch (u) {
-      case Urgency.CRITICAL: return 'СРОЧНО';
-      case Urgency.HIGH: return 'Важно';
-      default: return '';
+  const handleDeleteDevice = async (id: string) => {
+    if (confirm('Удалить устройство?')) {
+      await api.deleteDevice(id);
+      setDevices(prev => prev.filter(d => d.id !== id));
     }
   };
 
-  // --- RENDERERS ---
-  const renderDeviceCard = (device: Device) => (
-    <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 transform-gpu will-change-transform">
-      <div className="flex-1">
-        <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
-          <div className="flex items-center gap-2">
-             <button 
-                onClick={() => toggleDevicePlan(device.id)} 
-                className={`p-1 rounded transition-all duration-200 active:scale-90 ${device.isPlanned ? 'text-green-600 bg-green-100 hover:bg-green-200' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'}`}
-                title="Добавить в план на завтра"
-             >
-                <CalendarCheck className="w-5 h-5" />
-             </button>
-             <h3 className="text-lg md:text-xl font-bold text-slate-800">{device.deviceModel}</h3>
-             {/* Urgency Badge */}
-             {device.urgency !== Urgency.NORMAL && (
-                <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${getUrgencyColor(device.urgency)}`}>
-                   {getUrgencyLabel(device.urgency)}
-                </span>
-             )}
-          </div>
-          <div className="flex flex-col items-end">
-              <span className="text-xs font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded mb-1">{new Date(device.dateReceived).toLocaleDateString('ru-RU')}</span>
-              <span className="text-[10px] font-medium text-slate-400">{getDaysInShop(device.dateReceived)} дн. в сервисе</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 mb-2">
-           <p className="text-sm text-slate-500 font-medium">{device.clientName}</p>
-           {/* Urgency Selector Small */}
-           <select 
-              value={device.urgency || Urgency.NORMAL}
-              onChange={(e) => updateDeviceUrgency(device.id, e.target.value as Urgency)}
-              className="text-xs border border-slate-200 rounded px-1 py-0.5 text-slate-400 focus:text-slate-700 outline-none cursor-pointer hover:border-slate-400 transition-colors"
-           >
-              <option value={Urgency.NORMAL}>Норма</option>
-              <option value={Urgency.HIGH}>Важно</option>
-              <option value={Urgency.CRITICAL}>Срочно!</option>
-           </select>
-        </div>
-        <div className="bg-red-50 text-red-700 p-2 md:p-3 rounded-md text-sm border border-red-100 mb-3">{device.issueDescription}</div>
-      </div>
-      <div className="w-full md:w-64 flex flex-row md:flex-col justify-between items-center md:items-stretch gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6">
-        <div className="flex-grow md:flex-grow-0">
-          <select value={device.status} onChange={(e) => updateDeviceStatus(device.id, e.target.value as DeviceStatus)} className={`w-full p-2 rounded border font-medium text-sm focus:outline-none transition-colors cursor-pointer ${device.status === DeviceStatus.READY ? 'bg-green-100 text-green-800 border-green-200' : device.status === DeviceStatus.ISSUED ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
-            {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          {device.status === DeviceStatus.ISSUED && (
-              <div className="text-[10px] text-center text-slate-400 mt-1">Авто-удаление через 4 дня</div>
-          )}
-        </div>
-        <div className="flex gap-2">
-            <button onClick={() => handleEditDevice(device)} className="flex-1 text-slate-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition-all active:scale-90 duration-200 border border-slate-100 flex justify-center items-center"><Pencil className="w-5 h-5" /></button>
-            <button onClick={() => deleteDevice(device.id)} className="flex-1 text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-all active:scale-90 duration-200 border border-slate-100 flex justify-center items-center"><Trash2 className="w-5 h-5" /></button>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (!initLoaded) return <div className="flex items-center justify-center min-h-screen bg-slate-50 text-slate-500"><div className="animate-spin mr-2"><Clock className="w-6 h-6" /></div>Загрузка мастерской...</div>;
-
-  const renderSidebar = () => (
-    <>
-      <div className="hidden md:flex w-64 bg-slate-900 text-slate-100 flex-col h-screen fixed left-0 top-0 overflow-y-auto no-print z-10 shadow-xl transform-gpu">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold flex items-center gap-2 text-blue-400"><Wrench className="w-8 h-8" />Мастерская</h1>
-          <button onClick={handleManualConnect} className="flex items-center gap-2 mt-4 text-xs bg-slate-800 py-1 px-2 rounded cursor-pointer hover:bg-slate-700 transition-colors w-full active:scale-95 duration-150 will-change-transform">
-             {storageMode === 'cloud' ? <span className="text-green-400 flex items-center gap-1 font-bold"><Cloud className="w-3 h-3"/> Vercel DB</span> : <span className="text-orange-400 flex items-center gap-1 font-bold"><CloudOff className="w-3 h-3"/> Local Mode</span>}
-             {isSyncing ? <RefreshCw className="w-3 h-3 ml-auto animate-spin text-slate-400" /> : <span className="ml-auto text-slate-500 text-[10px]">{storageMode === 'cloud' ? 'Connected' : 'Connect'}</span>}
-          </button>
-        </div>
-        <nav className="flex-1 px-4 space-y-2"><NavButtons current={view} setView={setView} devicesCount={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} /></nav>
-        {/* Robot moved out of here to main App component to fix z-index clipping */}
-        <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">&copy; 2025 Workshop Pro</div>
-      </div>
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-slate-900/90 backdrop-blur-md text-slate-100 flex justify-around items-center p-3 z-50 border-t border-slate-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] transform-gpu">
-        <MobileNavButton view="repair" current={view} setView={setView} icon={<Clock className="w-6 h-6" />} label="Ремонт" badge={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} />
-        <MobileNavButton view="planning" current={view} setView={setView} icon={<CalendarCheck className="w-6 h-6" />} label="План" />
-        <MobileNavButton view="inventory" current={view} setView={setView} icon={<Package className="w-6 h-6" />} label="Склад" />
-        <MobileNavButton view="print" current={view} setView={setView} icon={<Printer className="w-6 h-6" />} label="Печать" />
-        <MobileNavButton view="ai_chat" current={view} setView={setView} icon={<Bot className="w-6 h-6" />} label="AI" />
-      </div>
-    </>
-  );
-
-  const renderRepairView = () => {
-      // stats is now computed at the component level to adhere to Rules of Hooks
-
-      return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in transform-gpu">
-      {/* Статистика */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-6 text-center">
-          <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-slate-500 uppercase font-bold">Всего</div><div className="text-xl font-bold text-slate-800">{stats.total}</div></div>
-          <div className="bg-blue-50 p-2 rounded-lg border border-blue-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-blue-500 uppercase font-bold">Принято</div><div className="text-xl font-bold text-blue-700">{stats.received}</div></div>
-          <div className="bg-yellow-50 p-2 rounded-lg border border-yellow-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-yellow-600 uppercase font-bold">В работе</div><div className="text-xl font-bold text-yellow-800">{stats.inProgress}</div></div>
-          <div className="bg-orange-50 p-2 rounded-lg border border-orange-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-orange-600 uppercase font-bold">Ждут ЗИП</div><div className="text-xl font-bold text-orange-800">{stats.waiting}</div></div>
-          <div className="bg-green-50 p-2 rounded-lg border border-green-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-green-600 uppercase font-bold">Готовы</div><div className="text-xl font-bold text-green-800">{stats.ready}</div></div>
-          <div className="bg-gray-100 p-2 rounded-lg border border-gray-200 opacity-70 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-gray-500 uppercase font-bold">Выдано</div><div className="text-xl font-bold text-gray-700">{stats.issued}</div></div>
-      </div>
-
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-bold text-slate-800">В работе</h2>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-             {storageMode === 'local' && <span className="text-orange-600 bg-orange-100 px-2 py-0.5 rounded text-xs">Локальный режим</span>}
-             <div className="flex items-center gap-1 bg-white border border-slate-200 rounded px-2 py-1">
-                 <span>Сортировка:</span>
-                 <select value={sortMethod} onChange={(e) => setSortMethod(e.target.value as any)} className="bg-transparent font-bold text-blue-600 outline-none cursor-pointer hover:text-blue-800 transition-colors">
-                     <option value="urgency">По срочности</option>
-                     <option value="date">По дате</option>
-                     <option value="status">По статусу</option>
-                 </select>
-             </div>
-             <button 
-                onClick={() => setGroupByClient(!groupByClient)} 
-                className={`flex items-center gap-1 px-2 py-1 rounded border transition-colors ${groupByClient ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600'}`}
-             >
-                {groupByClient ? <LayoutList className="w-4 h-4"/> : <Users className="w-4 h-4"/>}
-                <span>{groupByClient ? 'Разгруппировать' : 'Группировать по клиентам'}</span>
-             </button>
-          </div>
-        </div>
-        <button 
-            onClick={() => {
-                setEditingId(null);
-                setNewDevice({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
-                setShowAddDeviceModal(true);
-            }} 
-            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 duration-200 hover:shadow-lg will-change-transform"
-        >
-            <Plus className="w-5 h-5" />Принять
-        </button>
-      </div>
-      
-      <div className="grid gap-4">
-        {sortedDevices.length === 0 ? (
-          <div className="text-center py-12 md:py-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"><Package className="w-12 h-12 md:w-16 md:h-16 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-lg">Нет устройств</p></div>
-        ) : groupByClient && groupedDevices ? (
-            Object.entries(groupedDevices).map(([client, clientDevices]) => (
-                <div key={client} className="mb-4">
-                    <div className="flex items-center gap-2 mb-2 px-1">
-                        <Users className="w-5 h-5 text-slate-400" />
-                        <h3 className="font-bold text-lg text-slate-700">{client}</h3>
-                        <span className="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-0.5 rounded-full">{clientDevices.length}</span>
-                    </div>
-                    <div className="grid gap-4 pl-0 md:pl-4 border-l-2 border-slate-200">
-                        {clientDevices.map(device => renderDeviceCard(device))}
-                    </div>
-                </div>
-            ))
-        ) : (
-          sortedDevices.map((device) => renderDeviceCard(device))
-        )}
-      </div>
-      {showAddDeviceModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-14 md:pt-4 md:items-center bg-black/50 backdrop-blur-sm animate-fade-in overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform flex flex-col relative mb-20 md:mb-0">
-            <div className="p-6 md:p-8">
-                <h3 className="text-2xl font-bold mb-4 text-slate-800">{editingId ? 'Редактирование заказа' : 'Новое устройство'}</h3>
-                <div className="space-y-4">
-                <div><label className="text-sm font-medium text-slate-700">Модель</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.deviceModel || ''} onChange={e => setNewDevice({...newDevice, deviceModel: e.target.value})} /></div>
-                <div><label className="text-sm font-medium text-slate-700">Клиент</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientName || ''} onChange={e => setNewDevice({...newDevice, clientName: e.target.value})} /></div>
-                <div className="flex gap-4">
-                    <div className="flex-1">
-                        <label className="text-sm font-medium text-slate-700">Дата приема</label>
-                        <input type="date" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.dateReceived ? newDevice.dateReceived.split('T')[0] : new Date().toLocaleDateString('en-CA')} onChange={e => setNewDevice({...newDevice, dateReceived: e.target.value})} />
-                    </div>
-                    <div className="flex-1">
-                        <label className="text-sm font-medium text-slate-700">Срочность</label>
-                        <select 
-                        value={newDevice.urgency} 
-                        onChange={e => setNewDevice({...newDevice, urgency: e.target.value as Urgency})}
-                        className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                        >
-                        <option value={Urgency.NORMAL}>Обычная</option>
-                        <option value={Urgency.HIGH}>Важно</option>
-                        <option value={Urgency.CRITICAL}>Срочно!</option>
-                        </select>
-                    </div>
-                </div>
-                {editingId && (
-                     <div>
-                        <label className="text-sm font-medium text-slate-700">Статус</label>
-                        <select 
-                            value={newDevice.status} 
-                            onChange={e => setNewDevice({...newDevice, status: e.target.value as DeviceStatus})}
-                            className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                        >
-                            {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                     </div>
-                )}
-                <div><label className="text-sm font-medium text-slate-700">Поломка</label><textarea className="w-full p-3 border border-slate-300 rounded-lg outline-none h-20 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.issueDescription || ''} onChange={e => setNewDevice({...newDevice, issueDescription: e.target.value})} /></div>
-                <div className="flex gap-3 pt-2">
-                    <button onClick={() => { setShowAddDeviceModal(false); setEditingId(null); }} className="flex-1 py-3 text-slate-600 font-medium bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors active:scale-95 duration-200">Отмена</button>
-                    <button onClick={handleSaveDevice} className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors active:scale-95 duration-200 shadow-md">Сохранить</button>
-                </div>
-                </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  const handleAddPart = async () => {
+    if (!newPart.name) return;
+    const part: SparePart = {
+      id: Date.now().toString(),
+      name: newPart.name!,
+      type: newPart.type as PartType,
+      subtype: newPart.subtype,
+      quantity: newPart.quantity || 1,
+      inStock: newPart.inStock || false
+    };
+    await api.savePart(part);
+    setParts(prev => [...prev, part]);
+    setShowAddPart(false);
+    setNewPart({ name: '', type: PartType.OTHER, quantity: 1, inStock: true });
   };
 
-  const renderInventoryView = () => (
-      <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8">
-          <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold flex items-center gap-2"><Package className="w-6 h-6 text-blue-600"/> Склад запчастей</h2>
-              <div className="flex gap-2">
-                  <button onClick={() => setInventoryTab('stock')} className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${inventoryTab === 'stock' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>Наличие</button>
-                  <button onClick={() => setInventoryTab('buy')} className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${inventoryTab === 'buy' ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>Закупки</button>
-              </div>
-          </div>
-          
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-wrap gap-4 items-end">
-              <div className="flex-1 min-w-[200px]">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Название</label>
-                  <input type="text" value={newPartName} onChange={e => setNewPartName(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg text-sm" placeholder="Например: Конденсатор 100uF 25V" />
-              </div>
-              <div className="w-40">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Категория</label>
-                  <select value={newPartType} onChange={e => setNewPartType(e.target.value as PartType)} className="w-full p-2 border border-slate-300 rounded-lg text-sm">
-                      {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-              </div>
-              <div className="w-24">
-                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Кол-во</label>
-                   <input type="number" min="1" value={newPartQuantity} onChange={e => setNewPartQuantity(parseInt(e.target.value))} className="w-full p-2 border border-slate-300 rounded-lg text-sm" />
-              </div>
-              <button onClick={addPart} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-bold text-sm h-[38px] flex items-center gap-2"><Plus className="w-4 h-4"/> Добавить</button>
-          </div>
+  const handleDeletePart = async (id: string) => {
+    if (confirm('Удалить запчасть?')) {
+      await api.deletePart(id);
+      setParts(prev => prev.filter(p => p.id !== id));
+    }
+  };
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left">
-                      <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                          <tr>
-                              <th className="p-4">Наименование</th>
-                              <th className="p-4">Категория</th>
-                              <th className="p-4 text-center">Остаток</th>
-                              <th className="p-4 text-right">Действия</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {parts.filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock)).map(part => (
-                              <tr key={part.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                                  <td className="p-4 font-medium text-slate-800">{part.name}</td>
-                                  <td className="p-4 text-slate-500">
-                                      <span className="bg-slate-100 px-2 py-1 rounded text-xs">{part.type}</span>
-                                  </td>
-                                  <td className="p-4 text-center">
-                                      <div className="flex items-center justify-center gap-2">
-                                          <button onClick={() => updatePartQuantity(part.id, -1)} className="text-slate-400 hover:text-red-500"><Minus className="w-4 h-4"/></button>
-                                          <span className="w-8 font-bold">{part.quantity}</span>
-                                          <button onClick={() => updatePartQuantity(part.id, 1)} className="text-slate-400 hover:text-green-500"><Plus className="w-4 h-4"/></button>
-                                      </div>
-                                  </td>
-                                  <td className="p-4 text-right">
-                                      <div className="flex items-center justify-end gap-2">
-                                          <button onClick={() => togglePartStockStatus(part.id)} className="text-blue-500 hover:text-blue-700 text-xs font-bold">{part.inStock ? 'В покупки' : 'На склад'}</button>
-                                          <button onClick={() => deletePart(part.id)} className="text-red-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
-                                      </div>
-                                  </td>
-                              </tr>
-                          ))}
-                          {parts.filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock)).length === 0 && (
-                              <tr><td colSpan={4} className="p-8 text-center text-slate-400">Пусто</td></tr>
-                          )}
-                      </tbody>
-                  </table>
-              </div>
-          </div>
-      </div>
-  );
+  // --- RENDERING ---
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 font-sans text-slate-900">
-      {renderSidebar()}
+    <div className="flex h-screen bg-slate-900 text-slate-200 overflow-hidden font-sans">
       
-      <main className="flex-1 md:ml-64 relative min-h-screen">
-        {view === 'repair' && renderRepairView()}
-        {view === 'inventory' && renderInventoryView()}
-        {view === 'planning' && (
-           <div className="p-4 md:p-8 max-w-6xl mx-auto">
-             <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><CalendarCheck className="w-6 h-6 text-green-600"/> План работ</h2>
-             <div className="grid gap-4">
-               {devices.filter(d => d.isPlanned).map(device => renderDeviceCard(device))}
-               {devices.filter(d => d.isPlanned).length === 0 && <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-500">Нет запланированных устройств. Отметьте устройства флажком в списке ремонта.</div>}
-             </div>
-           </div>
-        )}
-        {view === 'print' && <Printables devices={devices} />}
-        {view === 'ai_chat' && (
-            <div className="flex flex-col h-[calc(100vh-80px)] md:h-screen p-4 max-w-3xl mx-auto pt-4 md:pt-8">
-               <div className="flex-1 overflow-y-auto space-y-4 p-4 bg-white rounded-xl shadow-sm border border-slate-200 mb-4 scroll-smooth">
-                  {chatMessages.map((msg, i) => (
-                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none'}`}>
-                             {msg.role === 'model' && <div className="flex items-center gap-1 mb-1 text-xs font-bold text-blue-600 opacity-75"><Bot className="w-3 h-3" /> AI Assistant</div>}
-                             <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</div>
-                          </div>
-                      </div>
-                  ))}
-                  {isChatLoading && <div className="flex justify-start"><div className="bg-slate-50 p-3 rounded-2xl rounded-tl-none text-slate-500 text-sm flex gap-2 items-center"><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div></div></div>}
-               </div>
-               <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={chatInput} 
-                    onChange={e => setChatInput(e.target.value)} 
-                    onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Спросите совет по ремонту..." 
-                    className="flex-1 p-4 border border-slate-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm"
-                  />
-                  <button onClick={handleSendMessage} className="bg-blue-600 text-white px-6 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"><ArrowRight className="w-6 h-6"/></button>
-               </div>
+      {/* Sidebar (Desktop) */}
+      <div className="w-64 bg-slate-900 flex-col border-r border-slate-800 hidden md:flex">
+         <div className="p-6 flex items-center gap-3">
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-2 rounded-lg shadow-lg shadow-blue-900/50">
+               <Wrench className="w-6 h-6 text-white" />
             </div>
-        )}
-        {view === 'references' && (
-            <div className="p-4 md:p-8 max-w-4xl mx-auto">
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="flex border-b border-slate-200 overflow-x-auto">
-                        <button onClick={() => setActiveRefTab('esr')} className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeRefTab === 'esr' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>Таблица ESR</button>
-                        <button onClick={() => setActiveRefTab('smd')} className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeRefTab === 'smd' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>SMD Калькулятор</button>
-                        <button onClick={() => setActiveRefTab('divider')} className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeRefTab === 'divider' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>Делитель</button>
-                    </div>
-                    <div className="p-6">
-                        {activeRefTab === 'esr' && (
-                            <div>
-                                <div className="flex justify-end mb-4">
-                                    <div className="bg-slate-100 p-1 rounded-lg flex text-xs font-bold">
-                                        <button onClick={() => setEsrMode('std')} className={`px-3 py-1 rounded-md transition-colors ${esrMode === 'std' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>Standard</button>
-                                        <button onClick={() => setEsrMode('low')} className={`px-3 py-1 rounded-md transition-colors ${esrMode === 'low' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>Low ESR</button>
-                                    </div>
-                                </div>
-                                <div className="overflow-x-auto">
-                                <table className="w-full text-xs md:text-sm border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50 text-slate-500">
-                                            <th className="border p-2">Cap / V</th>
-                                            <th className="border p-2">10V</th>
-                                            <th className="border p-2">16V</th>
-                                            <th className="border p-2">25V</th>
-                                            <th className="border p-2">63V</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(esrMode === 'std' ? ESR_DATA_STD : ESR_DATA_LOW).map((row, i) => (
-                                            <tr key={i} className="text-center hover:bg-blue-50">
-                                                <td className="border p-2 font-bold bg-slate-50">{row.cap}</td>
-                                                <td className="border p-2">{row.v10}</td>
-                                                <td className="border p-2">{row.v16}</td>
-                                                <td className="border p-2">{row.v25}</td>
-                                                <td className="border p-2">{row.v63}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                </div>
-                            </div>
-                        )}
-                        {activeRefTab === 'smd' && (
-                            <div className="max-w-xs mx-auto text-center space-y-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-500 mb-2">Код на корпусе</label>
-                                    <input type="text" value={smdCode} onChange={e => setSmdCode(e.target.value)} className="w-full text-center text-2xl p-2 border border-slate-300 rounded uppercase font-mono" placeholder="103" />
-                                </div>
-                                <div className="p-4 bg-slate-100 rounded-lg">
-                                    <div className="text-xs text-slate-500 uppercase font-bold mb-1">Результат</div>
-                                    <div className="text-xl font-bold text-blue-600">{calculateSMD(smdCode)}</div>
-                                </div>
-                            </div>
-                        )}
-                        {activeRefTab === 'divider' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="space-y-4">
-                                    <div><label className="text-xs font-bold text-slate-500">Vin (Вольт)</label><input type="number" value={dividerValues.vin} onChange={e => setDividerValues({...dividerValues, vin: parseFloat(e.target.value)})} className="w-full p-2 border rounded"/></div>
-                                    <div><label className="text-xs font-bold text-slate-500">R1 (Ом)</label><input type="number" value={dividerValues.r1} onChange={e => setDividerValues({...dividerValues, r1: parseFloat(e.target.value)})} className="w-full p-2 border rounded"/></div>
-                                    <div><label className="text-xs font-bold text-slate-500">R2 (Ом)</label><input type="number" value={dividerValues.r2} onChange={e => setDividerValues({...dividerValues, r2: parseFloat(e.target.value)})} className="w-full p-2 border rounded"/></div>
-                                </div>
-                                <div className="flex items-center justify-center bg-slate-100 rounded-xl">
-                                    <div className="text-center">
-                                        <div className="text-xs text-slate-500 uppercase font-bold mb-2">Vout</div>
-                                        <div className="text-4xl font-bold text-blue-600">{calculateDividerVout()} V</div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+            <div>
+               <h1 className="text-xl font-bold text-white tracking-tight">Мастерская</h1>
+               <div className="text-[10px] text-slate-500 font-mono uppercase">Pro Edition v2.0</div>
+            </div>
+         </div>
+
+         <div className="flex-1 px-4 overflow-y-auto custom-scrollbar">
+            <NavButtons current={view} setView={setView} devicesCount={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} />
+         </div>
+
+         <div className="p-4 border-t border-slate-800">
+             <div className="bg-slate-800 rounded-lg p-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-bold">ME</div>
+                <div className="flex-1 min-w-0">
+                   <div className="text-sm font-bold truncate">Инженер</div>
+                   {isOfflineMode ? (
+                     <div className="text-[10px] text-orange-400 flex items-center gap-1"><CloudOff className="w-3 h-3"/> Offline Mode</div>
+                   ) : (
+                     <div className="text-[10px] text-green-400 flex items-center gap-1"><div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div> Online</div>
+                   )}
                 </div>
-            </div>
-        )}
-        {view === 'knowledge' && (
-            <div className="p-4 md:p-8 max-w-4xl mx-auto pb-24">
-               <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-purple-700"><BrainCircuit className="w-8 h-8"/>База знаний</h2>
-               <div className="grid gap-4">
-                  {KNOWLEDGE_BASE.map((item, idx) => (
-                      <div key={idx} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
-                          <div className="flex items-center gap-4 p-4 cursor-pointer bg-slate-50/50 hover:bg-slate-50" onClick={() => setExpandedKnowledge(expandedKnowledge === item.title ? null : item.title)}>
-                             <div className="p-2 bg-white rounded-lg shadow-sm">{item.icon}</div>
-                             <div className="flex-1">
-                                <h3 className="font-bold text-lg text-slate-800">{item.title}</h3>
-                                <p className="text-xs text-slate-500">{item.description}</p>
-                             </div>
-                             {expandedKnowledge === item.title ? <ChevronUp className="w-5 h-5 text-slate-400"/> : <ChevronDown className="w-5 h-5 text-slate-400"/>}
-                          </div>
-                          {expandedKnowledge === item.title && (
-                              <div className="p-4 border-t border-slate-100 bg-white space-y-6 animate-fade-in">
-                                  {item.issues.map((issue, i) => (
-                                      <div key={i} className="flex gap-3">
-                                          <div className="mt-1"><AlertCircle className="w-4 h-4 text-red-500" /></div>
-                                          <div>
-                                            <div className="text-sm font-bold text-red-600 mb-1">{issue.problem}</div>
-                                            <div className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">{issue.solution}</div>
-                                          </div>
-                                      </div>
-                                  ))}
-                              </div>
-                          )}
+             </div>
+         </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0 bg-slate-50 relative">
+        
+        {/* Mobile Header */}
+        <div className="md:hidden bg-slate-900 text-white p-4 flex items-center justify-between sticky top-0 z-30">
+           <div className="flex items-center gap-2">
+              <div className="bg-blue-600 p-1.5 rounded-lg"><Wrench className="w-5 h-5"/></div>
+              <span className="font-bold">Мастерская Pro</span>
+           </div>
+           {isOfflineMode && <div className="text-[10px] bg-orange-500/20 text-orange-300 px-2 py-1 rounded-full border border-orange-500/50 flex items-center gap-1"><CloudOff className="w-3 h-3"/> Offline</div>}
+        </div>
+
+        <div className="flex-1 overflow-auto bg-slate-100 text-slate-900 p-4 md:p-8">
+           
+           {/* VIEW: REPAIR */}
+           {view === 'repair' && (
+             <div className="max-w-6xl mx-auto space-y-6">
+                <div className="flex justify-between items-center">
+                   <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Wrench className="w-6 h-6 text-blue-600"/> В ремонте</h2>
+                   <button onClick={() => setShowAddDevice(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium shadow-sm transition-all active:scale-95">
+                      <Plus className="w-4 h-4" /> Принять
+                   </button>
+                </div>
+                
+                {showAddDevice && (
+                  <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 animate-fade-in-down mb-6">
+                     <div className="flex justify-between mb-4">
+                        <h3 className="font-bold text-lg">Новое устройство</h3>
+                        <button onClick={() => setShowAddDevice(false)}><X className="w-5 h-5 text-gray-400"/></button>
+                     </div>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <input placeholder="Клиент (Имя, Телефон)" className="border p-2 rounded" value={newDevice.clientName} onChange={e => setNewDevice({...newDevice, clientName: e.target.value})} />
+                        <input placeholder="Модель устройства" className="border p-2 rounded" value={newDevice.deviceModel} onChange={e => setNewDevice({...newDevice, deviceModel: e.target.value})} />
+                        <select className="border p-2 rounded" value={newDevice.urgency} onChange={e => setNewDevice({...newDevice, urgency: e.target.value as Urgency})}>
+                          <option value={Urgency.NORMAL}>Обычная срочность</option>
+                          <option value={Urgency.HIGH}>Высокая</option>
+                          <option value={Urgency.CRITICAL}>Критическая (Срочно!)</option>
+                        </select>
+                        <div className="flex items-center gap-2">
+                           <input type="checkbox" id="isPlanned" checked={newDevice.isPlanned} onChange={e => setNewDevice({...newDevice, isPlanned: e.target.checked})} className="w-5 h-5"/>
+                           <label htmlFor="isPlanned">В план на завтра</label>
+                        </div>
+                     </div>
+                     <textarea placeholder="Описание неисправности" className="border p-2 rounded w-full h-24 mb-4" value={newDevice.issueDescription} onChange={e => setNewDevice({...newDevice, issueDescription: e.target.value})} />
+                     <div className="flex justify-end">
+                        <button onClick={handleAddDevice} className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700">Сохранить</button>
+                     </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                   {devices.map(dev => (
+                      <div key={dev.id} className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 hover:shadow-md transition-shadow relative group">
+                         <div className={`absolute top-0 right-0 w-16 h-16 rounded-bl-full opacity-20 ${dev.urgency === Urgency.CRITICAL ? 'bg-red-500' : dev.urgency === Urgency.HIGH ? 'bg-orange-500' : 'bg-transparent'}`}></div>
+                         
+                         <div className="flex justify-between items-start mb-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              dev.status === DeviceStatus.READY ? 'bg-green-100 text-green-700' : 
+                              dev.status === DeviceStatus.ISSUED ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-600'
+                            }`}>{dev.status}</span>
+                            <button onClick={() => handleDeleteDevice(dev.id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
+                         </div>
+                         
+                         <h3 className="font-bold text-lg mb-1 truncate" title={dev.deviceModel}>{dev.deviceModel}</h3>
+                         <div className="text-sm text-slate-500 mb-3 flex items-center gap-1"><Users className="w-3 h-3"/> {dev.clientName}</div>
+                         
+                         <div className="bg-slate-50 p-2 rounded text-xs text-slate-600 mb-4 h-16 overflow-y-auto">
+                            {dev.issueDescription}
+                         </div>
+
+                         <div className="flex gap-2 mt-auto">
+                            <select 
+                              value={dev.status} 
+                              onChange={async (e) => {
+                                const updated = { ...dev, status: e.target.value as DeviceStatus, statusChangedAt: new Date().toISOString() };
+                                await api.saveDevice(updated);
+                                setDevices(prev => prev.map(d => d.id === dev.id ? updated : d));
+                              }}
+                              className="flex-1 text-xs border border-slate-300 rounded p-1 bg-white"
+                            >
+                               {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                         </div>
                       </div>
+                   ))}
+                   {devices.length === 0 && <div className="col-span-full text-center py-20 text-slate-400">Список пуст</div>}
+                </div>
+             </div>
+           )}
+
+           {/* VIEW: PLANNING */}
+           {view === 'planning' && (
+             <div className="max-w-4xl mx-auto">
+                <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2"><CalendarCheck className="w-6 h-6 text-purple-600"/> План работ</h2>
+                <div className="space-y-4">
+                  {devices.filter(d => d.isPlanned && d.status !== DeviceStatus.ISSUED).length === 0 && (
+                    <div className="bg-white p-8 rounded-xl text-center text-slate-400">Нет запланированных устройств. Отметьте "В план" при приеме.</div>
+                  )}
+                  {devices.filter(d => d.isPlanned && d.status !== DeviceStatus.ISSUED).map(dev => (
+                    <div key={dev.id} className="bg-white p-4 rounded-xl border border-l-4 border-purple-500 shadow-sm flex justify-between items-center">
+                       <div>
+                          <div className="font-bold">{dev.deviceModel}</div>
+                          <div className="text-sm text-slate-500">{dev.issueDescription}</div>
+                       </div>
+                       <div className="text-xs font-bold px-2 py-1 bg-slate-100 rounded">{dev.urgency}</div>
+                    </div>
                   ))}
+                </div>
+             </div>
+           )}
+
+           {/* VIEW: INVENTORY */}
+           {view === 'inventory' && (
+             <div className="max-w-6xl mx-auto">
+               <div className="flex justify-between items-center mb-6">
+                   <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Package className="w-6 h-6 text-orange-600"/> Склад запчастей</h2>
+                   <button onClick={() => setShowAddPart(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium shadow-sm">
+                      <Plus className="w-4 h-4" /> Добавить
+                   </button>
                </div>
-            </div>
-        )}
-      </main>
+
+               {showAddPart && (
+                  <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 mb-6">
+                     <div className="flex justify-between mb-4">
+                        <h3 className="font-bold text-lg">Новая запчасть</h3>
+                        <button onClick={() => setShowAddPart(false)}><X className="w-5 h-5 text-gray-400"/></button>
+                     </div>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <input placeholder="Название / Номинал" className="border p-2 rounded" value={newPart.name} onChange={e => setNewPart({...newPart, name: e.target.value})} />
+                        <select className="border p-2 rounded" value={newPart.type} onChange={e => setNewPart({...newPart, type: e.target.value as PartType, subtype: ''})}>
+                           {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <select className="border p-2 rounded" value={newPart.subtype} onChange={e => setNewPart({...newPart, subtype: e.target.value})}>
+                           <option value="">-- Подкатегория --</option>
+                           {newPart.type && RADIO_SUBCATEGORIES[newPart.type as PartType]?.map(sub => (
+                             <option key={sub} value={sub}>{sub}</option>
+                           ))}
+                        </select>
+                     </div>
+                     <div className="flex items-center gap-4 mb-4">
+                        <input type="number" min="1" className="border p-2 rounded w-24" value={newPart.quantity} onChange={e => setNewPart({...newPart, quantity: parseInt(e.target.value)})} />
+                        <label className="flex items-center gap-2">
+                           <input type="checkbox" checked={newPart.inStock} onChange={e => setNewPart({...newPart, inStock: e.target.checked})} className="w-5 h-5"/> В наличии
+                        </label>
+                     </div>
+                     <button onClick={handleAddPart} className="bg-orange-600 text-white px-6 py-2 rounded-lg w-full">Добавить на склад</button>
+                  </div>
+               )}
+
+               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                  <table className="w-full text-left">
+                     <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
+                        <tr>
+                           <th className="p-4">Название</th>
+                           <th className="p-4">Категория</th>
+                           <th className="p-4">Кол-во</th>
+                           <th className="p-4">Статус</th>
+                           <th className="p-4 text-right">Действия</th>
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100 text-sm">
+                        {parts.map(part => (
+                           <tr key={part.id} className="hover:bg-slate-50">
+                              <td className="p-4 font-medium">{part.name}</td>
+                              <td className="p-4 text-slate-500">{part.type} <span className="text-xs text-slate-400 block">{part.subtype}</span></td>
+                              <td className="p-4">{part.quantity} шт.</td>
+                              <td className="p-4">
+                                 {part.inStock 
+                                    ? <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold"><CheckCircle className="w-3 h-3"/> В наличии</span>
+                                    : <span className="inline-flex items-center gap-1 text-red-600 bg-red-50 px-2 py-1 rounded text-xs font-bold"><ShoppingCart className="w-3 h-3"/> Купить</span>
+                                 }
+                              </td>
+                              <td className="p-4 text-right">
+                                 <button onClick={() => handleDeletePart(part.id)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>
+                              </td>
+                           </tr>
+                        ))}
+                     </tbody>
+                  </table>
+                  {parts.length === 0 && <div className="p-10 text-center text-slate-400">Склад пуст</div>}
+               </div>
+             </div>
+           )}
+
+           {/* VIEW: PRINT */}
+           {view === 'print' && <Printables devices={devices} />}
+
+           {/* VIEW: AI CHAT */}
+           {view === 'ai_chat' && (
+             <div className="max-w-3xl mx-auto h-[calc(100vh-8rem)] flex flex-col bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-slate-50 p-4 border-b flex items-center gap-3">
+                   <div className="bg-indigo-600 p-2 rounded-full"><Bot className="w-5 h-5 text-white"/></div>
+                   <div>
+                      <h3 className="font-bold">AI Инженер</h3>
+                      <div className="text-xs text-slate-500">Помогает с диагностикой и аналогами</div>
+                   </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                   {chatMessages.map((msg, idx) => (
+                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                         <div className={`max-w-[80%] rounded-2xl p-4 text-sm ${
+                            msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'
+                         }`}>
+                           {msg.role === 'model' ? (
+                             <div dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') }} />
+                           ) : msg.text}
+                         </div>
+                      </div>
+                   ))}
+                   {aiLoading && (
+                      <div className="flex justify-start"><div className="bg-slate-100 p-4 rounded-2xl rounded-bl-none flex gap-1">
+                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-100"></div>
+                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-200"></div>
+                      </div></div>
+                   )}
+                </div>
+                <div className="p-4 border-t flex gap-2">
+                   <input 
+                      className="flex-1 border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                      placeholder="Спроси совета..." 
+                      value={chatInput} 
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
+                   />
+                   <button onClick={handleSendMessage} disabled={aiLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-lg transition-colors"><ArrowRight className="w-5 h-5"/></button>
+                </div>
+             </div>
+           )}
+
+           {/* VIEW: REFERENCES */}
+           {view === 'references' && (
+              <div className="max-w-5xl mx-auto space-y-8">
+                 <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><BookOpen className="w-6 h-6 text-teal-600"/> Справочные данные</h2>
+                 
+                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                    <h3 className="font-bold text-lg mb-4 text-slate-700">Таблица ESR (ЭПС) конденсаторов</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-center border-collapse">
+                         <thead>
+                            <tr>
+                               <th className="border p-2 bg-slate-100 text-left">Емкость</th>
+                               <th className="border p-2 bg-slate-50">10 V</th>
+                               <th className="border p-2 bg-slate-50">16 V</th>
+                               <th className="border p-2 bg-slate-50">25 V</th>
+                               <th className="border p-2 bg-slate-50">63 V</th>
+                            </tr>
+                         </thead>
+                         <tbody>
+                            <tr className="bg-slate-100"><td colSpan={5} className="p-2 font-bold text-left">Стандартные (Standard)</td></tr>
+                            {ESR_DATA_STD.map(row => (
+                               <tr key={`std-${row.cap}`}>
+                                  <td className="border p-2 font-bold text-left">{row.cap}</td>
+                                  <td className="border p-2">{row.v10}</td>
+                                  <td className="border p-2">{row.v16}</td>
+                                  <td className="border p-2">{row.v25}</td>
+                                  <td className="border p-2">{row.v63}</td>
+                               </tr>
+                            ))}
+                            <tr className="bg-slate-100"><td colSpan={5} className="p-2 font-bold text-left mt-4">Низкоимпедансные (Low ESR)</td></tr>
+                            {ESR_DATA_LOW.map(row => (
+                               <tr key={`low-${row.cap}`}>
+                                  <td className="border p-2 font-bold text-left">{row.cap}</td>
+                                  <td className="border p-2">{row.v10}</td>
+                                  <td className="border p-2">{row.v16}</td>
+                                  <td className="border p-2">{row.v25}</td>
+                                  <td className="border p-2">{row.v63}</td>
+                               </tr>
+                            ))}
+                         </tbody>
+                      </table>
+                    </div>
+                 </div>
+              </div>
+           )}
+
+           {/* VIEW: KNOWLEDGE */}
+           {view === 'knowledge' && (
+              <div className="max-w-4xl mx-auto">
+                 <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-2"><BrainCircuit className="w-6 h-6 text-pink-600"/> База типовых дефектов</h2>
+                 <div className="grid grid-cols-1 gap-4">
+                    {KNOWLEDGE_BASE.map((item, idx) => (
+                       <details key={idx} className="bg-white rounded-xl shadow-sm border border-slate-200 group">
+                          <summary className="p-4 flex items-center gap-4 cursor-pointer list-none">
+                             <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-slate-100 transition-colors">{item.icon}</div>
+                             <div className="flex-1">
+                                <h3 className="font-bold text-lg">{item.title}</h3>
+                                <p className="text-sm text-slate-500">{item.description}</p>
+                             </div>
+                             <ChevronDown className="w-5 h-5 text-slate-400 group-open:rotate-180 transition-transform"/>
+                          </summary>
+                          <div className="p-4 pt-0 border-t border-slate-100 mt-2">
+                             <div className="space-y-4 mt-4">
+                                {item.issues.map((issue, i) => (
+                                   <div key={i} className="bg-slate-50 p-3 rounded-lg">
+                                      <div className="font-bold text-red-500 text-sm mb-1">{issue.problem}</div>
+                                      <div className="text-sm text-slate-700 leading-relaxed">{issue.solution}</div>
+                                   </div>
+                                ))}
+                             </div>
+                          </div>
+                       </details>
+                    ))}
+                 </div>
+              </div>
+           )}
+
+        </div>
+
+        {/* Mobile Navigation */}
+        <div className="md:hidden bg-white border-t border-gray-200 flex justify-around p-2 pb-safe sticky bottom-0 z-30 shadow-[0_-5px_10px_rgba(0,0,0,0.05)]">
+           <MobileNavButton view="repair" current={view} setView={setView} icon={<Wrench className="w-6 h-6"/>} label="Ремонт" badge={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} />
+           <MobileNavButton view="inventory" current={view} setView={setView} icon={<Package className="w-6 h-6"/>} label="Склад" />
+           <MobileNavButton view="planning" current={view} setView={setView} icon={<CalendarCheck className="w-6 h-6"/>} label="План" />
+           <MobileNavButton view="print" current={view} setView={setView} icon={<Printer className="w-6 h-6"/>} label="Печать" />
+           <MobileNavButton view="ai_chat" current={view} setView={setView} icon={<Bot className="w-6 h-6"/>} label="AI" />
+        </div>
+
+      </div>
 
       <WorkshopRobot />
     </div>
