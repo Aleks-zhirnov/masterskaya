@@ -15,7 +15,7 @@ export const generateWorkshopAdvice = async (prompt: string): Promise<string> =>
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         systemInstruction: "Вы опытный инженер-электронщик в домашней мастерской. Вы помогаете с поиском аналогов запчастей, диагностикой неисправностей и организацией рабочего процесса. Отвечай кратко, профессионально и на русском языке. Используй форматирование Markdown для списков.",
