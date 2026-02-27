@@ -1180,8 +1180,8 @@ const App: React.FC = () => {
             onClick={() => handleAiBeautify(device)}
             disabled={!!aiEditingDeviceId}
             className={`flex-1 p-2 rounded transition-all active:scale-90 duration-200 border flex justify-center items-center ${aiEditingDeviceId === device.id
-                ? 'text-amber-600 bg-amber-50 border-amber-200 animate-pulse'
-                : 'text-amber-400 hover:text-amber-600 hover:bg-amber-50 border-slate-100'
+              ? 'text-amber-600 bg-amber-50 border-amber-200 animate-pulse'
+              : 'text-amber-400 hover:text-amber-600 hover:bg-amber-50 border-slate-100'
               } disabled:opacity-40 disabled:cursor-not-allowed`}
             title="AI: улучшить описание"
           >
@@ -1324,8 +1324,8 @@ const App: React.FC = () => {
           )}
         </div>
         {showAddDeviceModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-lg animate-fade-in">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform max-h-[85vh] overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-lg animate-fade-in" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }} onClick={(e) => { if (e.target === e.currentTarget) { setShowAddDeviceModal(false); setEditingId(null); } }}>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform max-h-[90vh] overflow-y-auto" style={{ margin: 'auto' }}>
               <div className="p-6 md:p-8">
                 <h3 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-100">{editingId ? 'Редактирование заказа' : 'Новое устройство'}</h3>
                 <div className="space-y-4">
