@@ -44,7 +44,12 @@ import {
   ListFilter,
   Pencil,
   Users,
-  LayoutList
+  LayoutList,
+  Phone,
+  MessageCircle,
+  Archive,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
 import { generateWorkshopAdvice } from './services/ai';
@@ -449,10 +454,14 @@ const WorkshopRobot = () => {
 
   useEffect(() => {
     const fetchFact = async () => {
-      // Пытаемся получить факт от AI
-      const prompt = "Расскажи один очень короткий, но интересный и малоизвестный технический факт или лайфхак для инженера-электронщика. Не более 2 предложений. В конце добавь веселый смайлик.";
-      const response = await generateWorkshopAdvice(prompt);
-      setFact(response);
+      try {
+        const prompt = "Расскажи один очень короткий, но интересный и малоизвестный технический факт или лайфхак для инженера-электронщика. Не более 2 предложений. В конце добавь веселый смайлик.";
+        const response = await generateWorkshopAdvice(prompt);
+        setFact(response);
+      } catch (error) {
+        console.error("WorkshopRobot AI error:", error);
+        setFact("Паяльник с жалом Hakko T12 прогревается за 8 секунд!");
+      }
     };
     fetchFact();
   }, []);
@@ -493,8 +502,9 @@ const NavButtons: React.FC<NavButtonProps> = ({ current, setView, devicesCount }
       <div onClick={() => setView('planning')} className={btnClass('planning')}><CalendarCheck className="w-5 h-5" /><span className="font-medium">План работ</span></div>
       <div onClick={() => setView('inventory')} className={btnClass('inventory')}><Package className="w-5 h-5" /><span className="font-medium">Склад</span></div>
       <div onClick={() => setView('print')} className={btnClass('print')}><Printer className="w-5 h-5" /><span className="font-medium">Печать</span></div>
+      <div onClick={() => setView('archive')} className={btnClass('archive')}><Archive className="w-5 h-5" /><span className="font-medium">Архив</span></div>
       <div onClick={() => setView('ai_chat')} className={btnClass('ai_chat')}><Bot className="w-5 h-5" /><span className="font-medium">AI Помощник</span></div>
-      
+
       <div className="pt-4 pb-2 text-xs font-bold text-slate-600 uppercase tracking-wider px-4">База знаний</div>
       <div onClick={() => setView('references')} className={btnClass('references')}><BookOpen className="w-5 h-5" /><span className="font-medium">Справочники</span></div>
       <div onClick={() => setView('knowledge')} className={btnClass('knowledge')}><BrainCircuit className="w-5 h-5" /><span className="font-medium">База дефектов</span></div>
@@ -527,7 +537,21 @@ const MobileNavButton: React.FC<MobileNavButtonProps> = ({ view, current, setVie
 const App: React.FC = () => {
   // --- STATE ---
   const [view, setView] = useState<ViewState>('repair');
-  
+
+  // Dark Mode
+  const [darkMode, setDarkMode] = useState(() => {
+    try { return localStorage.getItem('workshop_darkMode') === 'true'; } catch { return false; }
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    try { localStorage.setItem('workshop_darkMode', String(darkMode)); } catch {}
+  }, [darkMode]);
+
   // Storage Mode
   const [storageMode, setStorageMode] = useState<'local' | 'cloud'>('local');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -543,6 +567,8 @@ const App: React.FC = () => {
   const [newDevice, setNewDevice] = useState<Partial<Device>>({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
   const [sortMethod, setSortMethod] = useState<'date' | 'urgency' | 'status'>('urgency');
   const [groupByClient, setGroupByClient] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<DeviceStatus | 'ALL'>('ALL');
   
   // UI State - Inventory
   const [inventoryTab, setInventoryTab] = useState<'stock' | 'buy'>('stock');
@@ -559,7 +585,7 @@ const App: React.FC = () => {
   const [newPartQuantity, setNewPartQuantity] = useState<number>(1);
 
   // References State
-  const [activeRefTab, setActiveRefTab] = useState<'esr' | 'smd' | 'divider' | 'datasheet'>('esr');
+  const [activeRefTab, setActiveRefTab] = useState<'esr' | 'smd' | 'divider' | 'led' | 'datasheet'>('esr');
   const [esrMode, setEsrMode] = useState<'std' | 'low'>('std');
   const [smdCode, setSmdCode] = useState('');
   const [dividerValues, setDividerValues] = useState({ vin: 12, r1: 10000, r2: 1000 });
@@ -579,10 +605,16 @@ const App: React.FC = () => {
 
   const loadLocal = () => {
     setStorageMode('local');
-    const localDevs = localStorage.getItem('workshop_devices');
-    const localParts = localStorage.getItem('workshop_parts');
-    if (localDevs) setDevices(JSON.parse(localDevs));
-    if (localParts) setParts(JSON.parse(localParts));
+    try {
+      const localDevs = localStorage.getItem('workshop_devices');
+      const localParts = localStorage.getItem('workshop_parts');
+      if (localDevs) setDevices(JSON.parse(localDevs));
+      if (localParts) setParts(JSON.parse(localParts));
+    } catch (e) {
+      console.error("Error loading localStorage data:", e);
+      setDevices([]);
+      setParts([]);
+    }
   };
 
   const tryConnectCloud = async () => {
@@ -603,35 +635,35 @@ const App: React.FC = () => {
     }
   };
 
-  const cleanupOldDevices = async (loadedDevices: Device[]) => {
+  const archiveOldDevices = async (loadedDevices: Device[], mode: 'local' | 'cloud') => {
     const now = new Date();
-    const idsToDelete: string[] = [];
-    
+    const idsToArchive: string[] = [];
+
     loadedDevices.forEach(d => {
-       if (d.status === DeviceStatus.ISSUED && d.statusChangedAt) {
+       if (d.status === DeviceStatus.ISSUED && d.statusChangedAt && !d.isArchived) {
           const changedAt = new Date(d.statusChangedAt);
           const diffTime = Math.abs(now.getTime() - changedAt.getTime());
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-          
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
           if (diffDays > 4) {
-             idsToDelete.push(d.id);
+             idsToArchive.push(d.id);
           }
        }
     });
 
-    if (idsToDelete.length > 0) {
-       console.log("Auto-deleting old issued devices:", idsToDelete);
-       // Удаляем из стейта
-       const remaining = loadedDevices.filter(d => !idsToDelete.includes(d.id));
-       setDevices(remaining);
-       
-       // Удаляем из БД/LocalStorage
-       if (storageMode === 'local') {
-          localStorage.setItem('workshop_devices', JSON.stringify(remaining));
+    if (idsToArchive.length > 0) {
+       console.log("Auto-archiving old issued devices:", idsToArchive);
+       const updated = loadedDevices.map(d =>
+         idsToArchive.includes(d.id) ? { ...d, isArchived: true } : d
+       );
+       setDevices(updated);
+
+       if (mode === 'local') {
+          localStorage.setItem('workshop_devices', JSON.stringify(updated));
        } else {
-          // Последовательно удаляем, чтобы не грузить базу параллельными запросами
-          for (const id of idsToDelete) {
-             await api.deleteDevice(id);
+          for (const id of idsToArchive) {
+             const device = updated.find(d => d.id === id);
+             if (device) await api.saveDevice(device);
           }
        }
     }
@@ -641,19 +673,23 @@ const App: React.FC = () => {
     const initApp = async () => {
       const cloudData = await tryConnectCloud();
       let currentDevices: Device[] = [];
-      
+      let currentMode: 'local' | 'cloud' = 'local';
+
       if (cloudData) {
         setDevices(cloudData.devices);
         setParts(cloudData.parts);
         currentDevices = cloudData.devices;
+        currentMode = 'cloud';
       } else {
         loadLocal();
-        const localDevs = localStorage.getItem('workshop_devices');
-        if (localDevs) currentDevices = JSON.parse(localDevs);
+        try {
+          const localDevs = localStorage.getItem('workshop_devices');
+          if (localDevs) currentDevices = JSON.parse(localDevs);
+        } catch {}
       }
-      
-      // Запускаем очистку старых заказов
-      await cleanupOldDevices(currentDevices);
+
+      // Запускаем архивацию старых заказов
+      await archiveOldDevices(currentDevices, currentMode);
       setInitLoaded(true);
     };
 
@@ -726,14 +762,14 @@ const App: React.FC = () => {
 
   // MEMOIZATION OPTIMIZATION
   const sortedDevices = useMemo(() => {
-     return [...devices].sort((a, b) => {
+     return [...devices].filter(d => !d.isArchived).sort((a, b) => {
         if (sortMethod === 'urgency') {
            const urgencyOrder = { [Urgency.CRITICAL]: 0, [Urgency.HIGH]: 1, [Urgency.NORMAL]: 2 };
            const uDiff = urgencyOrder[a.urgency || Urgency.NORMAL] - urgencyOrder[b.urgency || Urgency.NORMAL];
            if (uDiff !== 0) return uDiff;
            return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
         }
-        
+
         if (sortMethod === 'status') {
             if (a.status !== b.status) return a.status.localeCompare(b.status);
             return new Date(a.dateReceived).getTime() - new Date(b.dateReceived).getTime();
@@ -743,11 +779,28 @@ const App: React.FC = () => {
      });
   }, [devices, sortMethod]);
 
+  const filteredDevices = useMemo(() => {
+    let result = sortedDevices;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(d =>
+        d.clientName.toLowerCase().includes(q) ||
+        d.deviceModel.toLowerCase().includes(q) ||
+        d.issueDescription.toLowerCase().includes(q) ||
+        (d.clientPhone && d.clientPhone.includes(q))
+      );
+    }
+    if (statusFilter !== 'ALL') {
+      result = result.filter(d => d.status === statusFilter);
+    }
+    return result;
+  }, [sortedDevices, searchQuery, statusFilter]);
+
   const groupedDevices = useMemo<Record<string, Device[]> | null>(() => {
       if (!groupByClient) return null;
-      
+
       const groups: Record<string, Device[]> = {};
-      sortedDevices.forEach(device => {
+      filteredDevices.forEach(device => {
           const client = device.clientName || 'Неизвестный клиент';
           if (!groups[client]) {
               groups[client] = [];
@@ -755,17 +808,19 @@ const App: React.FC = () => {
           groups[client].push(device);
       });
       return groups;
-  }, [sortedDevices, groupByClient]);
+  }, [filteredDevices, groupByClient]);
 
-  // MOVE useMemo HERE
+  const activeDevices = useMemo(() => devices.filter(d => !d.isArchived), [devices]);
+
   const stats = useMemo(() => ({
-      total: devices.length,
-      received: devices.filter(d => d.status === DeviceStatus.RECEIVED).length,
-      inProgress: devices.filter(d => d.status === DeviceStatus.IN_PROGRESS).length,
-      waiting: devices.filter(d => d.status === DeviceStatus.WAITING_PARTS).length,
-      ready: devices.filter(d => d.status === DeviceStatus.READY).length,
-      issued: devices.filter(d => d.status === DeviceStatus.ISSUED).length
-  }), [devices]);
+      total: activeDevices.length,
+      received: activeDevices.filter(d => d.status === DeviceStatus.RECEIVED).length,
+      inProgress: activeDevices.filter(d => d.status === DeviceStatus.IN_PROGRESS).length,
+      waiting: activeDevices.filter(d => d.status === DeviceStatus.WAITING_PARTS).length,
+      ready: activeDevices.filter(d => d.status === DeviceStatus.READY).length,
+      issued: activeDevices.filter(d => d.status === DeviceStatus.ISSUED).length,
+      revenue: activeDevices.filter(d => d.status === DeviceStatus.ISSUED && d.estimatedCost).reduce((sum, d) => sum + (d.estimatedCost || 0), 0)
+  }), [activeDevices]);
 
   const getDaysInShop = (dateStr: string) => {
       const start = new Date(dateStr);
@@ -810,12 +865,14 @@ const App: React.FC = () => {
         const device: Device = {
           id: Date.now().toString(),
           clientName: newDevice.clientName,
+          clientPhone: newDevice.clientPhone || '',
           deviceModel: newDevice.deviceModel,
           issueDescription: newDevice.issueDescription || '',
           dateReceived: dateReceived,
           status: DeviceStatus.RECEIVED,
           urgency: newDevice.urgency || Urgency.NORMAL,
-          notes: '',
+          estimatedCost: newDevice.estimatedCost,
+          notes: newDevice.notes || '',
           statusChangedAt: new Date().toISOString()
         };
         persistDevice([...devices, device], device);
@@ -830,11 +887,14 @@ const App: React.FC = () => {
       setEditingId(device.id);
       setNewDevice({
           clientName: device.clientName,
+          clientPhone: device.clientPhone,
           deviceModel: device.deviceModel,
           issueDescription: device.issueDescription,
           dateReceived: device.dateReceived,
           status: device.status,
-          urgency: device.urgency
+          urgency: device.urgency,
+          estimatedCost: device.estimatedCost,
+          notes: device.notes
       });
       setShowAddDeviceModal(true);
   };
@@ -854,6 +914,11 @@ const App: React.FC = () => {
     persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
   };
   
+  const updateDeviceNotes = (id: string, notes: string) => {
+    const updatedDevices = devices.map(d => d.id === id ? { ...d, notes } : d);
+    persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
+  };
+
   const toggleDevicePlan = (id: string) => {
       const updatedDevices = devices.map(d => d.id === id ? { ...d, isPlanned: !d.isPlanned } : d);
       persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
@@ -898,9 +963,11 @@ const App: React.FC = () => {
   };
 
   const deletePart = (id: string) => {
-    const partToDelete = parts.find(p => p.id === id);
-    const updatedParts = parts.filter(p => p.id !== id);
-    persistPart(updatedParts, partToDelete, true);
+    if (confirm('Удалить запчасть?')) {
+      const partToDelete = parts.find(p => p.id === id);
+      const updatedParts = parts.filter(p => p.id !== id);
+      persistPart(updatedParts, partToDelete, true);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -976,7 +1043,7 @@ const App: React.FC = () => {
 
   // --- RENDERERS ---
   const renderDeviceCard = (device: Device) => (
-    <div key={device.id} className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 transform-gpu will-change-transform">
+    <div key={device.id} className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 transform-gpu will-change-transform">
       <div className="flex-1">
         <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
           <div className="flex items-center gap-2">
@@ -1000,20 +1067,42 @@ const App: React.FC = () => {
               <span className="text-[10px] font-medium text-slate-400">{getDaysInShop(device.dateReceived)} дн. в сервисе</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 mb-2">
-           <p className="text-sm text-slate-500 font-medium">{device.clientName}</p>
-           {/* Urgency Selector Small */}
-           <select 
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">{device.clientName}</p>
+           {device.clientPhone && (
+             <div className="flex items-center gap-1">
+               <a href={`tel:${device.clientPhone}`} className="text-blue-600 hover:text-blue-800 flex items-center gap-0.5 text-xs font-medium" title="Позвонить"><Phone className="w-3 h-3"/>{device.clientPhone}</a>
+               <a href={`https://wa.me/${device.clientPhone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded text-[10px] font-bold hover:bg-green-200 transition-colors flex items-center gap-0.5"><MessageCircle className="w-3 h-3"/>WA</a>
+             </div>
+           )}
+           <select
               value={device.urgency || Urgency.NORMAL}
               onChange={(e) => updateDeviceUrgency(device.id, e.target.value as Urgency)}
-              className="text-xs border border-slate-200 rounded px-1 py-0.5 text-slate-400 focus:text-slate-700 outline-none cursor-pointer hover:border-slate-400 transition-colors"
+              className="text-xs border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 rounded px-1 py-0.5 text-slate-400 focus:text-slate-700 outline-none cursor-pointer hover:border-slate-400 transition-colors"
            >
               <option value={Urgency.NORMAL}>Норма</option>
               <option value={Urgency.HIGH}>Важно</option>
               <option value={Urgency.CRITICAL}>Срочно!</option>
            </select>
+           {device.estimatedCost ? <span className="text-xs font-bold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded">{device.estimatedCost.toLocaleString('ru-RU')} ₽</span> : null}
         </div>
-        <div className="bg-red-50 text-red-700 p-2 md:p-3 rounded-md text-sm border border-red-100 mb-3">{device.issueDescription}</div>
+        <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-2 md:p-3 rounded-md text-sm border border-red-100 dark:border-red-900/30 mb-2">{device.issueDescription}</div>
+        {/* Inline notes */}
+        <details className="group mb-1">
+          <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 flex items-center gap-1">
+            <Pencil className="w-3 h-3" /> Заметки {device.notes ? `(есть)` : '(пусто)'}
+          </summary>
+          <textarea
+            defaultValue={device.notes || ''}
+            onBlur={(e) => {
+              if (e.target.value !== (device.notes || '')) {
+                updateDeviceNotes(device.id, e.target.value);
+              }
+            }}
+            className="w-full mt-1 p-2 text-sm border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-400 resize-y min-h-[60px]"
+            placeholder="Добавить заметку..."
+          />
+        </details>
       </div>
       <div className="w-full md:w-64 flex flex-row md:flex-col justify-between items-center md:items-stretch gap-2 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-6">
         <div className="flex-grow md:flex-grow-0">
@@ -1021,7 +1110,7 @@ const App: React.FC = () => {
             {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           {device.status === DeviceStatus.ISSUED && (
-              <div className="text-[10px] text-center text-slate-400 mt-1">Авто-удаление через 4 дня</div>
+              <div className="text-[10px] text-center text-slate-400 mt-1">В архив через 4 дня</div>
           )}
         </div>
         <div className="flex gap-2">
@@ -1044,15 +1133,23 @@ const App: React.FC = () => {
              {isSyncing ? <RefreshCw className="w-3 h-3 ml-auto animate-spin text-slate-400" /> : <span className="ml-auto text-slate-500 text-[10px]">{storageMode === 'cloud' ? 'Connected' : 'Connect'}</span>}
           </button>
         </div>
-        <nav className="flex-1 px-4 space-y-2"><NavButtons current={view} setView={setView} devicesCount={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} /></nav>
+        <nav className="flex-1 px-4 space-y-2"><NavButtons current={view} setView={setView} devicesCount={activeDevices.filter(d => d.status !== DeviceStatus.ISSUED).length} /></nav>
         {/* Robot moved out of here to main App component to fix z-index clipping */}
-        <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">&copy; 2025 Workshop Pro</div>
+        <div className="px-4 pb-2">
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="w-full flex items-center justify-center gap-2 text-xs py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+          >
+            {darkMode ? <><Sun className="w-4 h-4"/> Светлая тема</> : <><Moon className="w-4 h-4"/> Тёмная тема</>}
+          </button>
+        </div>
+        <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center">&copy; 2026 Workshop Pro</div>
       </div>
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-slate-900/90 backdrop-blur-md text-slate-100 flex justify-around items-center p-3 z-50 border-t border-slate-800 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] transform-gpu">
-        <MobileNavButton view="repair" current={view} setView={setView} icon={<Clock className="w-6 h-6" />} label="Ремонт" badge={devices.filter(d => d.status !== DeviceStatus.ISSUED).length} />
+        <MobileNavButton view="repair" current={view} setView={setView} icon={<Clock className="w-6 h-6" />} label="Ремонт" badge={activeDevices.filter(d => d.status !== DeviceStatus.ISSUED).length} />
         <MobileNavButton view="planning" current={view} setView={setView} icon={<CalendarCheck className="w-6 h-6" />} label="План" />
         <MobileNavButton view="inventory" current={view} setView={setView} icon={<Package className="w-6 h-6" />} label="Склад" />
-        <MobileNavButton view="print" current={view} setView={setView} icon={<Printer className="w-6 h-6" />} label="Печать" />
+        <MobileNavButton view="archive" current={view} setView={setView} icon={<Archive className="w-6 h-6" />} label="Архив" />
         <MobileNavButton view="ai_chat" current={view} setView={setView} icon={<Bot className="w-6 h-6" />} label="AI" />
       </div>
     </>
@@ -1064,13 +1161,14 @@ const App: React.FC = () => {
       return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in transform-gpu">
       {/* Статистика */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-6 text-center">
-          <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-slate-500 uppercase font-bold">Всего</div><div className="text-xl font-bold text-slate-800">{stats.total}</div></div>
-          <div className="bg-blue-50 p-2 rounded-lg border border-blue-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-blue-500 uppercase font-bold">Принято</div><div className="text-xl font-bold text-blue-700">{stats.received}</div></div>
-          <div className="bg-yellow-50 p-2 rounded-lg border border-yellow-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-yellow-600 uppercase font-bold">В работе</div><div className="text-xl font-bold text-yellow-800">{stats.inProgress}</div></div>
-          <div className="bg-orange-50 p-2 rounded-lg border border-orange-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-orange-600 uppercase font-bold">Ждут ЗИП</div><div className="text-xl font-bold text-orange-800">{stats.waiting}</div></div>
-          <div className="bg-green-50 p-2 rounded-lg border border-green-100 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-green-600 uppercase font-bold">Готовы</div><div className="text-xl font-bold text-green-800">{stats.ready}</div></div>
-          <div className="bg-gray-100 p-2 rounded-lg border border-gray-200 opacity-70 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-gray-500 uppercase font-bold">Выдано</div><div className="text-xl font-bold text-gray-700">{stats.issued}</div></div>
+      <div className="grid grid-cols-3 md:grid-cols-7 gap-2 mb-6 text-center">
+          <div className="bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-slate-500 uppercase font-bold">Всего</div><div className="text-xl font-bold text-slate-800 dark:text-slate-100">{stats.total}</div></div>
+          <div className="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-lg border border-blue-100 dark:border-blue-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-blue-500 uppercase font-bold">Принято</div><div className="text-xl font-bold text-blue-700 dark:text-blue-300">{stats.received}</div></div>
+          <div className="bg-yellow-50 dark:bg-yellow-900/30 p-2 rounded-lg border border-yellow-100 dark:border-yellow-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-yellow-600 uppercase font-bold">В работе</div><div className="text-xl font-bold text-yellow-800 dark:text-yellow-300">{stats.inProgress}</div></div>
+          <div className="bg-orange-50 dark:bg-orange-900/30 p-2 rounded-lg border border-orange-100 dark:border-orange-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-orange-600 uppercase font-bold">Ждут ЗИП</div><div className="text-xl font-bold text-orange-800 dark:text-orange-300">{stats.waiting}</div></div>
+          <div className="bg-green-50 dark:bg-green-900/30 p-2 rounded-lg border border-green-100 dark:border-green-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-green-600 uppercase font-bold">Готовы</div><div className="text-xl font-bold text-green-800 dark:text-green-300">{stats.ready}</div></div>
+          <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700 opacity-70 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-gray-500 uppercase font-bold">Выдано</div><div className="text-xl font-bold text-gray-700 dark:text-gray-300">{stats.issued}</div></div>
+          <div className="bg-emerald-50 dark:bg-emerald-900/30 p-2 rounded-lg border border-emerald-100 dark:border-emerald-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-emerald-600 uppercase font-bold">Выручка</div><div className="text-lg font-bold text-emerald-800 dark:text-emerald-300">{stats.revenue.toLocaleString('ru-RU')} ₽</div></div>
       </div>
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -1106,35 +1204,58 @@ const App: React.FC = () => {
             <Plus className="w-5 h-5" />Принять
         </button>
       </div>
-      
+
+      {/* Поиск и фильтр */}
+      <div className="flex flex-col md:flex-row gap-2 mb-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Поиск по клиенту, модели, поломке, телефону..."
+            className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value as DeviceStatus | 'ALL')}
+          className="p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-lg text-sm bg-white"
+        >
+          <option value="ALL">Все статусы</option>
+          {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
       <div className="grid gap-4">
-        {sortedDevices.length === 0 ? (
-          <div className="text-center py-12 md:py-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200"><Package className="w-12 h-12 md:w-16 md:h-16 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-lg">Нет устройств</p></div>
+        {filteredDevices.length === 0 ? (
+          <div className="text-center py-12 md:py-20 bg-slate-50 dark:bg-slate-800 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700"><Package className="w-12 h-12 md:w-16 md:h-16 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-lg">{searchQuery ? 'Ничего не найдено' : 'Нет устройств'}</p></div>
         ) : groupByClient && groupedDevices ? (
             Object.entries(groupedDevices).map(([client, clientDevices]: [string, Device[]]) => (
                 <div key={client} className="mb-4">
                     <div className="flex items-center gap-2 mb-2 px-1">
                         <Users className="w-5 h-5 text-slate-400" />
-                        <h3 className="font-bold text-lg text-slate-700">{client}</h3>
-                        <span className="bg-slate-200 text-slate-600 text-xs font-bold px-2 py-0.5 rounded-full">{clientDevices.length}</span>
+                        <h3 className="font-bold text-lg text-slate-700 dark:text-slate-200">{client}</h3>
+                        <span className="bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold px-2 py-0.5 rounded-full">{clientDevices.length}</span>
                     </div>
-                    <div className="grid gap-4 pl-0 md:pl-4 border-l-2 border-slate-200">
+                    <div className="grid gap-4 pl-0 md:pl-4 border-l-2 border-slate-200 dark:border-slate-700">
                         {clientDevices.map(device => renderDeviceCard(device))}
                     </div>
                 </div>
             ))
         ) : (
-          sortedDevices.map((device) => renderDeviceCard(device))
+          filteredDevices.map((device) => renderDeviceCard(device))
         )}
       </div>
       {showAddDeviceModal && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-14 md:pt-4 md:items-center bg-black/50 backdrop-blur-sm animate-fade-in overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform flex flex-col relative mb-20 md:mb-0">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform flex flex-col relative mb-20 md:mb-0">
             <div className="p-6 md:p-8">
-                <h3 className="text-2xl font-bold mb-4 text-slate-800">{editingId ? 'Редактирование заказа' : 'Новое устройство'}</h3>
+                <h3 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-100">{editingId ? 'Редактирование заказа' : 'Новое устройство'}</h3>
                 <div className="space-y-4">
-                <div><label className="text-sm font-medium text-slate-700">Модель</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.deviceModel || ''} onChange={e => setNewDevice({...newDevice, deviceModel: e.target.value})} /></div>
-                <div><label className="text-sm font-medium text-slate-700">Клиент</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientName || ''} onChange={e => setNewDevice({...newDevice, clientName: e.target.value})} /></div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Модель</label><input type="text" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.deviceModel || ''} onChange={e => setNewDevice({...newDevice, deviceModel: e.target.value})} /></div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Клиент</label><input type="text" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientName || ''} onChange={e => setNewDevice({...newDevice, clientName: e.target.value})} /></div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Телефон</label><input type="tel" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientPhone || ''} onChange={e => setNewDevice({...newDevice, clientPhone: e.target.value})} placeholder="+7 (999) 123-45-67" /></div>
                 <div className="flex gap-4">
                     <div className="flex-1">
                         <label className="text-sm font-medium text-slate-700">Дата приема</label>
@@ -1165,7 +1286,12 @@ const App: React.FC = () => {
                         </select>
                      </div>
                 )}
-                <div><label className="text-sm font-medium text-slate-700">Поломка</label><textarea className="w-full p-3 border border-slate-300 rounded-lg outline-none h-20 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.issueDescription || ''} onChange={e => setNewDevice({...newDevice, issueDescription: e.target.value})} /></div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Стоимость ремонта (₽)</label>
+                  <input type="number" min="0" step="100" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.estimatedCost || ''} onChange={e => setNewDevice({...newDevice, estimatedCost: e.target.value ? parseFloat(e.target.value) : undefined})} placeholder="0" />
+                </div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Поломка</label><textarea className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none h-20 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.issueDescription || ''} onChange={e => setNewDevice({...newDevice, issueDescription: e.target.value})} /></div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Заметки мастера</label><textarea className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none h-16 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.notes || ''} onChange={e => setNewDevice({...newDevice, notes: e.target.value})} placeholder="Заметки по ремонту..." /></div>
                 <div className="flex gap-3 pt-2">
                     <button onClick={() => { setShowAddDeviceModal(false); setEditingId(null); }} className="flex-1 py-3 text-slate-600 font-medium bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors active:scale-95 duration-200">Отмена</button>
                     <button onClick={handleSaveDevice} className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors active:scale-95 duration-200 shadow-md">Сохранить</button>
@@ -1202,15 +1328,35 @@ const App: React.FC = () => {
               </div>
               <div className="w-24">
                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Кол-во</label>
-                   <input type="number" min="1" value={newPartQuantity} onChange={e => setNewPartQuantity(parseInt(e.target.value))} className="w-full p-2 border border-slate-300 rounded-lg text-sm" />
+                   <input type="number" min="1" value={newPartQuantity} onChange={e => setNewPartQuantity(parseInt(e.target.value) || 1)} className="w-full p-2 border border-slate-300 rounded-lg text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100" />
               </div>
               <button onClick={addPart} className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-bold text-sm h-[38px] flex items-center gap-2"><Plus className="w-4 h-4"/> Добавить</button>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Фильтр по категории */}
+          <div className="flex flex-wrap gap-4 mb-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Фильтр: Категория</label>
+              <select value={inventoryFilterType} onChange={e => setInventoryFilterType(e.target.value as PartType | 'ALL')} className="p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg text-sm">
+                <option value="ALL">Все категории</option>
+                {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            {inventoryFilterType !== 'ALL' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Подкатегория</label>
+                <select value={inventoryFilterSubtype} onChange={e => setInventoryFilterSubtype(e.target.value)} className="p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg text-sm">
+                  <option value="ALL">Все</option>
+                  {(RADIO_SUBCATEGORIES[inventoryFilterType as PartType] || []).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                   <table className="w-full text-sm text-left">
-                      <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                      <thead className="bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-slate-600">
                           <tr>
                               <th className="p-4">Наименование</th>
                               <th className="p-4">Категория</th>
@@ -1219,11 +1365,15 @@ const App: React.FC = () => {
                           </tr>
                       </thead>
                       <tbody>
-                          {parts.filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock)).map(part => (
-                              <tr key={part.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                                  <td className="p-4 font-medium text-slate-800">{part.name}</td>
-                                  <td className="p-4 text-slate-500">
-                                      <span className="bg-slate-100 px-2 py-1 rounded text-xs">{part.type}</span>
+                          {parts.filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock))
+                                .filter(p => inventoryFilterType === 'ALL' || p.type === inventoryFilterType)
+                                .filter(p => inventoryFilterSubtype === 'ALL' || p.subtype === inventoryFilterSubtype)
+                                .map(part => (
+                              <tr key={part.id} className="border-b border-slate-100 dark:border-slate-700 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                  <td className="p-4 font-medium text-slate-800 dark:text-slate-100">{part.name}</td>
+                                  <td className="p-4 text-slate-500 dark:text-slate-400">
+                                      <span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs">{part.type}</span>
+                                      {part.subtype && <span className="ml-1 text-[10px] text-slate-400">{part.subtype}</span>}
                                   </td>
                                   <td className="p-4 text-center">
                                       <div className="flex items-center justify-center gap-2">
@@ -1240,7 +1390,10 @@ const App: React.FC = () => {
                                   </td>
                               </tr>
                           ))}
-                          {parts.filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock)).length === 0 && (
+                          {parts.filter(p => (inventoryTab === 'stock' ? p.inStock : !p.inStock))
+                                .filter(p => inventoryFilterType === 'ALL' || p.type === inventoryFilterType)
+                                .filter(p => inventoryFilterSubtype === 'ALL' || p.subtype === inventoryFilterSubtype)
+                                .length === 0 && (
                               <tr><td colSpan={4} className="p-8 text-center text-slate-400">Пусто</td></tr>
                           )}
                       </tbody>
@@ -1251,9 +1404,9 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div className={`flex flex-col md:flex-row min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100`}>
       {renderSidebar()}
-      
+
       <main className="flex-1 md:ml-64 relative min-h-screen">
         {view === 'repair' && renderRepairView()}
         {view === 'inventory' && renderInventoryView()}
@@ -1261,18 +1414,18 @@ const App: React.FC = () => {
            <div className="p-4 md:p-8 max-w-6xl mx-auto">
              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><CalendarCheck className="w-6 h-6 text-green-600"/> План работ</h2>
              <div className="grid gap-4">
-               {devices.filter(d => d.isPlanned).map(device => renderDeviceCard(device))}
-               {devices.filter(d => d.isPlanned).length === 0 && <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-xl text-slate-500">Нет запланированных устройств. Отметьте устройства флажком в списке ремонта.</div>}
+               {devices.filter(d => d.isPlanned && !d.isArchived).map(device => renderDeviceCard(device))}
+               {devices.filter(d => d.isPlanned && !d.isArchived).length === 0 && <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-500">Нет запланированных устройств. Отметьте устройства флажком в списке ремонта.</div>}
              </div>
            </div>
         )}
         {view === 'print' && <Printables devices={devices} />}
         {view === 'ai_chat' && (
             <div className="flex flex-col h-[calc(100vh-80px)] md:h-screen p-4 max-w-3xl mx-auto pt-4 md:pt-8">
-               <div className="flex-1 overflow-y-auto space-y-4 p-4 bg-white rounded-xl shadow-sm border border-slate-200 mb-4 scroll-smooth">
+               <div className="flex-1 overflow-y-auto space-y-4 p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 mb-4 scroll-smooth">
                   {chatMessages.map((msg, i) => (
                       <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none'}`}>
+                          <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
                              {msg.role === 'model' && <div className="flex items-center gap-1 mb-1 text-xs font-bold text-blue-600 opacity-75"><Bot className="w-3 h-3" /> AI Assistant</div>}
                              <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</div>
                           </div>
@@ -1287,7 +1440,7 @@ const App: React.FC = () => {
                     onChange={e => setChatInput(e.target.value)} 
                     onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Спросите совет по ремонту..." 
-                    className="flex-1 p-4 border border-slate-300 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm"
+                    className="flex-1 p-4 border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm"
                   />
                   <button onClick={handleSendMessage} className="bg-blue-600 text-white px-6 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"><ArrowRight className="w-6 h-6"/></button>
                </div>
@@ -1295,11 +1448,13 @@ const App: React.FC = () => {
         )}
         {view === 'references' && (
             <div className="p-4 md:p-8 max-w-4xl mx-auto">
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="flex border-b border-slate-200 overflow-x-auto">
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    <div className="flex border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
                         <button onClick={() => setActiveRefTab('esr')} className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeRefTab === 'esr' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>Таблица ESR</button>
                         <button onClick={() => setActiveRefTab('smd')} className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeRefTab === 'smd' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>SMD Калькулятор</button>
                         <button onClick={() => setActiveRefTab('divider')} className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeRefTab === 'divider' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>Делитель</button>
+                        <button onClick={() => setActiveRefTab('led')} className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeRefTab === 'led' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>LED Резистор</button>
+                        <button onClick={() => setActiveRefTab('datasheet')} className={`px-6 py-3 font-medium text-sm whitespace-nowrap ${activeRefTab === 'datasheet' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>Даташиты</button>
                     </div>
                     <div className="p-6">
                         {activeRefTab === 'esr' && (
@@ -1351,16 +1506,48 @@ const App: React.FC = () => {
                         {activeRefTab === 'divider' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div className="space-y-4">
-                                    <div><label className="text-xs font-bold text-slate-500">Vin (Вольт)</label><input type="number" value={dividerValues.vin} onChange={e => setDividerValues({...dividerValues, vin: parseFloat(e.target.value)})} className="w-full p-2 border rounded"/></div>
-                                    <div><label className="text-xs font-bold text-slate-500">R1 (Ом)</label><input type="number" value={dividerValues.r1} onChange={e => setDividerValues({...dividerValues, r1: parseFloat(e.target.value)})} className="w-full p-2 border rounded"/></div>
-                                    <div><label className="text-xs font-bold text-slate-500">R2 (Ом)</label><input type="number" value={dividerValues.r2} onChange={e => setDividerValues({...dividerValues, r2: parseFloat(e.target.value)})} className="w-full p-2 border rounded"/></div>
+                                    <div><label className="text-xs font-bold text-slate-500">Vin (Вольт)</label><input type="number" value={dividerValues.vin} onChange={e => setDividerValues({...dividerValues, vin: parseFloat(e.target.value)})} className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"/></div>
+                                    <div><label className="text-xs font-bold text-slate-500">R1 (Ом)</label><input type="number" value={dividerValues.r1} onChange={e => setDividerValues({...dividerValues, r1: parseFloat(e.target.value)})} className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"/></div>
+                                    <div><label className="text-xs font-bold text-slate-500">R2 (Ом)</label><input type="number" value={dividerValues.r2} onChange={e => setDividerValues({...dividerValues, r2: parseFloat(e.target.value)})} className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"/></div>
                                 </div>
-                                <div className="flex items-center justify-center bg-slate-100 rounded-xl">
+                                <div className="flex items-center justify-center bg-slate-100 dark:bg-slate-700 rounded-xl">
                                     <div className="text-center">
                                         <div className="text-xs text-slate-500 uppercase font-bold mb-2">Vout</div>
                                         <div className="text-4xl font-bold text-blue-600">{calculateDividerVout()} V</div>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+                        {activeRefTab === 'led' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="space-y-4">
+                                    <div><label className="text-xs font-bold text-slate-500">Напряжение источника (V)</label><input type="number" value={ledValues.vsource} onChange={e => setLedValues({...ledValues, vsource: parseFloat(e.target.value) || 0})} className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"/></div>
+                                    <div><label className="text-xs font-bold text-slate-500">Напряжение LED (V)</label><input type="number" value={ledValues.vled} onChange={e => setLedValues({...ledValues, vled: parseFloat(e.target.value) || 0})} className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"/></div>
+                                    <div><label className="text-xs font-bold text-slate-500">Ток LED (mA)</label><input type="number" value={ledValues.current} onChange={e => setLedValues({...ledValues, current: parseFloat(e.target.value) || 0})} className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100"/></div>
+                                </div>
+                                <div className="flex items-center justify-center bg-slate-100 dark:bg-slate-700 rounded-xl p-6">
+                                    <div className="text-center space-y-4">
+                                        <div>
+                                            <div className="text-xs text-slate-500 uppercase font-bold mb-1">Резистор</div>
+                                            <div className="text-4xl font-bold text-blue-600">{calculateLedResistor().r} &#937;</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-slate-500 uppercase font-bold mb-1">Мощность</div>
+                                            <div className="text-2xl font-bold text-orange-600">{calculateLedResistor().p} W</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {activeRefTab === 'datasheet' && (
+                            <div className="space-y-4">
+                                <div className="flex gap-2">
+                                    <input type="text" value={datasheetQuery} onChange={e => setDatasheetQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleDatasheetSearch()} placeholder="Введите маркировку (напр. LM317, IRF3205)" className="flex-1 p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg" />
+                                    <button onClick={handleDatasheetSearch} disabled={isDatasheetLoading} className="bg-blue-600 text-white px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"><Search className="w-5 h-5"/></button>
+                                    <button onClick={openAllDatasheet} className="bg-slate-600 text-white px-4 rounded-lg hover:bg-slate-700 flex items-center gap-1 transition-colors"><ExternalLink className="w-4 h-4"/> AllDatasheet</button>
+                                </div>
+                                {isDatasheetLoading && <div className="text-center text-slate-500 py-4">Ищу информацию...</div>}
+                                {datasheetResult && <div className="bg-slate-50 dark:bg-slate-700 p-4 rounded-lg border border-slate-200 dark:border-slate-600 text-sm whitespace-pre-wrap">{datasheetResult}</div>}
                             </div>
                         )}
                     </div>
@@ -1372,17 +1559,17 @@ const App: React.FC = () => {
                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-purple-700"><BrainCircuit className="w-8 h-8"/>База знаний</h2>
                <div className="grid gap-4">
                   {KNOWLEDGE_BASE.map((item, idx) => (
-                      <div key={idx} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
-                          <div className="flex items-center gap-4 p-4 cursor-pointer bg-slate-50/50 hover:bg-slate-50" onClick={() => setExpandedKnowledge(expandedKnowledge === item.title ? null : item.title)}>
-                             <div className="p-2 bg-white rounded-lg shadow-sm">{item.icon}</div>
+                      <div key={idx} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+                          <div className="flex items-center gap-4 p-4 cursor-pointer bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-50 dark:hover:bg-slate-700/50" onClick={() => setExpandedKnowledge(expandedKnowledge === item.title ? null : item.title)}>
+                             <div className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm">{item.icon}</div>
                              <div className="flex-1">
-                                <h3 className="font-bold text-lg text-slate-800">{item.title}</h3>
+                                <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">{item.title}</h3>
                                 <p className="text-xs text-slate-500">{item.description}</p>
                              </div>
                              {expandedKnowledge === item.title ? <ChevronUp className="w-5 h-5 text-slate-400"/> : <ChevronDown className="w-5 h-5 text-slate-400"/>}
                           </div>
                           {expandedKnowledge === item.title && (
-                              <div className="p-4 border-t border-slate-100 bg-white space-y-6 animate-fade-in">
+                              <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 space-y-6 animate-fade-in">
                                   {item.issues.map((issue, i) => (
                                       <div key={i} className="flex gap-3">
                                           <div className="mt-1"><AlertCircle className="w-4 h-4 text-red-500" /></div>
@@ -1398,6 +1585,57 @@ const App: React.FC = () => {
                   ))}
                </div>
             </div>
+        )}
+        {view === 'archive' && (
+          <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24">
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+              <Archive className="w-6 h-6 text-emerald-600"/> Архив завершённых ремонтов
+            </h2>
+
+            {/* Revenue Summary */}
+            <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 mb-6">
+              <div className="text-sm text-emerald-600 font-bold uppercase">Общая выручка (архив)</div>
+              <div className="text-3xl font-bold text-emerald-800 dark:text-emerald-300">
+                {devices.filter(d => d.isArchived && d.estimatedCost).reduce((sum, d) => sum + (d.estimatedCost || 0), 0).toLocaleString('ru-RU')} ₽
+              </div>
+              <div className="text-xs text-emerald-500 mt-1">
+                Всего завершено: {devices.filter(d => d.isArchived).length} ремонтов
+              </div>
+            </div>
+
+            {/* Archived Devices */}
+            <div className="space-y-3">
+              {devices.filter(d => d.isArchived).sort((a, b) =>
+                new Date(b.statusChangedAt || b.dateReceived).getTime() - new Date(a.statusChangedAt || a.dateReceived).getTime()
+              ).map(device => (
+                <div key={device.id} className="bg-white dark:bg-slate-800 p-4 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row justify-between items-start gap-2">
+                  <div>
+                    <div className="font-bold text-slate-800 dark:text-slate-100">{device.deviceModel}</div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">
+                      {device.clientName}
+                      {device.clientPhone && <span className="ml-2 text-blue-500">{device.clientPhone}</span>}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">{device.issueDescription}</div>
+                    {device.notes && <div className="text-xs text-slate-400 mt-1 italic">Заметки: {device.notes}</div>}
+                  </div>
+                  <div className="text-right whitespace-nowrap">
+                    <div className="text-xs text-slate-500">
+                      Принят: {new Date(device.dateReceived).toLocaleDateString('ru-RU')}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Выдан: {device.statusChangedAt ? new Date(device.statusChangedAt).toLocaleDateString('ru-RU') : '---'}
+                    </div>
+                    {device.estimatedCost ? (
+                      <div className="text-sm font-bold text-emerald-600 mt-1">{device.estimatedCost.toLocaleString('ru-RU')} ₽</div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+              {devices.filter(d => d.isArchived).length === 0 && (
+                <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-500">Архив пуст. Завершённые ремонты появятся здесь автоматически через 4 дня после выдачи.</div>
+              )}
+            </div>
+          </div>
         )}
       </main>
 

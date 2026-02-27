@@ -4,40 +4,45 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const { rows } = await sql`
-        SELECT 
-          id, 
-          clientname as "clientName", 
-          devicemodel as "deviceModel", 
-          issuedescription as "issueDescription", 
-          datereceived as "dateReceived", 
+        SELECT
+          id,
+          clientname as "clientName",
+          clientphone as "clientPhone",
+          devicemodel as "deviceModel",
+          issuedescription as "issueDescription",
+          datereceived as "dateReceived",
           status,
           urgency,
+          estimatedcost as "estimatedCost",
           statuschangedat as "statusChangedAt",
           isplanned as "isPlanned",
-          notes 
+          isarchived as "isArchived",
+          notes
         FROM devices
       `;
       return res.status(200).json(rows);
-    } 
-    
+    }
+
     if (req.method === 'POST') {
-      const { id, clientName, deviceModel, issueDescription, dateReceived, status, urgency, notes, statusChangedAt, isPlanned } = req.body;
-      
+      const { id, clientName, clientPhone, deviceModel, issueDescription, dateReceived, status, urgency, estimatedCost, notes, statusChangedAt, isPlanned, isArchived } = req.body;
+
       const safeUrgency = urgency || 'normal';
-      // Convert boolean to string for Postgres if needed or rely on driver, usually bool is fine.
-      
+
       await sql`
-        INSERT INTO devices (id, clientName, deviceModel, issueDescription, dateReceived, status, urgency, notes, statusChangedAt, isPlanned)
-        VALUES (${id}, ${clientName}, ${deviceModel}, ${issueDescription}, ${dateReceived}, ${status}, ${safeUrgency}, ${notes || ''}, ${statusChangedAt || null}, ${isPlanned || false})
-        ON CONFLICT (id) DO UPDATE SET 
+        INSERT INTO devices (id, clientName, clientPhone, deviceModel, issueDescription, dateReceived, status, urgency, estimatedCost, notes, statusChangedAt, isPlanned, isArchived)
+        VALUES (${id}, ${clientName}, ${clientPhone || ''}, ${deviceModel}, ${issueDescription}, ${dateReceived}, ${status}, ${safeUrgency}, ${estimatedCost || null}, ${notes || ''}, ${statusChangedAt || null}, ${isPlanned || false}, ${isArchived || false})
+        ON CONFLICT (id) DO UPDATE SET
           clientName = ${clientName},
+          clientPhone = ${clientPhone || ''},
           deviceModel = ${deviceModel},
           issueDescription = ${issueDescription},
           dateReceived = ${dateReceived},
-          status = ${status}, 
+          status = ${status},
           urgency = ${safeUrgency},
+          estimatedCost = ${estimatedCost || null},
           statusChangedAt = ${statusChangedAt || null},
           isPlanned = ${isPlanned || false},
+          isArchived = ${isArchived || false},
           notes = ${notes || ''};
       `;
       return res.status(200).json({ success: true });

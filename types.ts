@@ -15,14 +15,17 @@ export enum Urgency {
 export interface Device {
   id: string;
   clientName: string;
+  clientPhone?: string;
   deviceModel: string;
   issueDescription: string;
   dateReceived: string; // ISO string
   status: DeviceStatus;
   urgency: Urgency;
+  estimatedCost?: number;
   notes?: string;
   statusChangedAt?: string; // ISO string, для автоудаления
   isPlanned?: boolean; // План на завтра
+  isArchived?: boolean;
 }
 
 export enum PartType {
@@ -48,7 +51,7 @@ export interface SparePart {
   inStock: boolean; // true = in stock, false = to buy
 }
 
-export type ViewState = 'repair' | 'inventory' | 'print' | 'ai_chat' | 'references' | 'knowledge' | 'planning';
+export type ViewState = 'repair' | 'inventory' | 'print' | 'ai_chat' | 'references' | 'knowledge' | 'planning' | 'archive';
 
 export interface ChatMessage {
   role: 'user' | 'model';

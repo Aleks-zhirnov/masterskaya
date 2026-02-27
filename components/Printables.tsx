@@ -109,7 +109,7 @@ export const Printables: React.FC<PrintablesProps> = ({ devices }) => {
               <div className="flex flex-col">
                 <span className="font-bold text-[10px] uppercase text-gray-500 mb-0.5">Клиент / Контакты:</span>
                 <div className="border-b border-gray-400 min-h-[1.5em] pb-1 truncate leading-tight">
-                  {device.isBlank ? '' : device.clientName}
+                  {device.isBlank ? '' : <>{device.clientName}{device.clientPhone ? ` | ${device.clientPhone}` : ''}</>}
                 </div>
               </div>
 
