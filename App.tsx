@@ -52,7 +52,7 @@ import {
   Moon
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
-import { generateWorkshopAdvice } from './services/ai';
+import { generateWorkshopAdvice, getOpenRouterKey, setOpenRouterKey } from './services/ai';
 import { Printables } from './components/Printables';
 
 // --- CONSTANTS ---
@@ -1430,11 +1430,39 @@ const App: React.FC = () => {
         {view === 'print' && <Printables devices={devices} />}
         {view === 'ai_chat' && (
             <div className="flex flex-col h-[calc(100vh-80px)] md:h-screen p-4 max-w-3xl mx-auto pt-4 md:pt-8">
+               {/* Настройка API ключа */}
+               {!getOpenRouterKey() && !process.env.API_KEY && (
+                 <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-4 animate-fade-in">
+                   <div className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-2">Настройте AI помощника (бесплатно)</div>
+                   <div className="text-xs text-amber-700 dark:text-amber-400 mb-3">Зарегистрируйтесь на <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline font-bold">openrouter.ai</a>, скопируйте API ключ и вставьте ниже. Ключ сохранится в браузере навсегда.</div>
+                   <div className="flex gap-2">
+                     <input
+                       type="password"
+                       id="openrouter-key-input"
+                       placeholder="sk-or-v1-..."
+                       className="flex-1 p-2 text-sm border border-amber-300 dark:border-amber-700 dark:bg-slate-800 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500"
+                     />
+                     <button
+                       onClick={() => {
+                         const input = document.getElementById('openrouter-key-input') as HTMLInputElement;
+                         if (input?.value?.trim()) {
+                           setOpenRouterKey(input.value.trim());
+                           setChatMessages(prev => [...prev, { role: 'model', text: 'Ключ сохранён! Теперь можете задавать вопросы по ремонту.' }]);
+                         }
+                       }}
+                       className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-amber-700 transition-colors"
+                     >
+                       Сохранить
+                     </button>
+                   </div>
+                 </div>
+               )}
+
                <div className="flex-1 overflow-y-auto space-y-4 p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 mb-4 scroll-smooth">
                   {chatMessages.map((msg, i) => (
                       <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
-                             {msg.role === 'model' && <div className="flex items-center gap-1 mb-1 text-xs font-bold text-blue-600 opacity-75"><Bot className="w-3 h-3" /> AI Assistant</div>}
+                             {msg.role === 'model' && <div className="flex items-center gap-1 mb-1 text-xs font-bold text-blue-600 opacity-75"><Bot className="w-3 h-3" /> AI (DeepSeek R1)</div>}
                              <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</div>
                           </div>
                       </div>
@@ -1442,12 +1470,12 @@ const App: React.FC = () => {
                   {isChatLoading && <div className="flex justify-start"><div className="bg-slate-50 p-3 rounded-2xl rounded-tl-none text-slate-500 text-sm flex gap-2 items-center"><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div></div></div>}
                </div>
                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={chatInput} 
-                    onChange={e => setChatInput(e.target.value)} 
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Спросите совет по ремонту..." 
+                    placeholder="Спросите совет по ремонту..."
                     className="flex-1 p-4 border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm"
                   />
                   <button onClick={handleSendMessage} className="bg-blue-600 text-white px-6 rounded-xl hover:bg-blue-700 transition-colors shadow-sm"><ArrowRight className="w-6 h-6"/></button>

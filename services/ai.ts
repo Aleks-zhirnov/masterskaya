@@ -2,6 +2,16 @@ import { GoogleGenAI } from "@google/genai";
 
 const SYSTEM_PROMPT = "Вы опытный инженер-электронщик в домашней мастерской по ремонту бытовой и автомобильной электроники. Вы специализируетесь на: диагностике неисправностей плат, определении компонентов по маркировке (SMD коды, корпуса), поиске аналогов запчастей, чтении схем. Отвечайте кратко, профессионально и на русском языке. Используйте форматирование Markdown для списков.";
 
+// --- Ключи: localStorage → env fallback ---
+
+export const getOpenRouterKey = (): string => {
+  try { return localStorage.getItem('workshop_openrouter_key') || ''; } catch { return ''; }
+};
+
+export const setOpenRouterKey = (key: string) => {
+  try { localStorage.setItem('workshop_openrouter_key', key); } catch {}
+};
+
 const getGeminiClient = (): GoogleGenAI | null => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) return null;
@@ -9,7 +19,7 @@ const getGeminiClient = (): GoogleGenAI | null => {
 };
 
 const generateViaOpenRouter = async (prompt: string): Promise<string> => {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = getOpenRouterKey() || process.env.OPENROUTER_API_KEY || '';
   if (!apiKey) return "";
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -29,13 +39,11 @@ const generateViaOpenRouter = async (prompt: string): Promise<string> => {
 
   if (!res.ok) throw new Error(`OpenRouter error: ${res.status}`);
   const data = await res.json();
-  // DeepSeek R1 может возвращать reasoning в <think> тегах — убираем их
   const raw = data.choices?.[0]?.message?.content || "";
   return raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 };
 
 export const generateWorkshopAdvice = async (prompt: string): Promise<string> => {
-  // 1. Пробуем Gemini (если есть API_KEY)
   const gemini = getGeminiClient();
   if (gemini) {
     try {
@@ -50,7 +58,6 @@ export const generateWorkshopAdvice = async (prompt: string): Promise<string> =>
     }
   }
 
-  // 2. Пробуем DeepSeek R1 через OpenRouter (если есть OPENROUTER_API_KEY)
   try {
     const result = await generateViaOpenRouter(prompt);
     if (result) return result;
@@ -58,6 +65,5 @@ export const generateWorkshopAdvice = async (prompt: string): Promise<string> =>
     console.error("OpenRouter Error:", error);
   }
 
-  // 3. Нет ключей
-  return "Для работы AI настройте API_KEY (Gemini) или OPENROUTER_API_KEY (бесплатный DeepSeek R1 на openrouter.ai).";
+  return "Для работы AI введите ключ OpenRouter в настройках AI чата (бесплатно на openrouter.ai).";
 };
