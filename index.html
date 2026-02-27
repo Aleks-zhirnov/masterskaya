@@ -67,7 +67,36 @@
       .will-change-transform {
         will-change: transform;
       }
-      
+
+      /* Плавный переход dark mode */
+      *, *::before, *::after {
+        transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+      }
+
+      /* Кастомный скроллбар */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      .dark ::-webkit-scrollbar-thumb { background: #475569; }
+      .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+      /* Выделение текста */
+      ::selection { background: #3b82f6; color: white; }
+      .dark ::selection { background: #60a5fa; color: #0f172a; }
+
+      /* Градиент-текст */
+      .text-gradient {
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      /* No scrollbar (для табов) */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
       /* --- СТИЛИ ПЕЧАТИ --- */
       @media print {
         /* Скрываем всё по умолчанию */
