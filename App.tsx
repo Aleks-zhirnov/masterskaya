@@ -1042,8 +1042,16 @@ const App: React.FC = () => {
   };
 
   // --- RENDERERS ---
+  const getUrgencyBorder = (u: Urgency) => {
+    switch (u) {
+      case Urgency.CRITICAL: return 'border-l-4 border-l-red-500';
+      case Urgency.HIGH: return 'border-l-4 border-l-orange-400';
+      default: return 'border-l-4 border-l-slate-200 dark:border-l-slate-600';
+    }
+  };
+
   const renderDeviceCard = (device: Device) => (
-    <div key={device.id} className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 transform-gpu will-change-transform">
+    <div key={device.id} className={`bg-white dark:bg-slate-800 p-4 md:p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 ${getUrgencyBorder(device.urgency || Urgency.NORMAL)} flex flex-col md:flex-row gap-4 md:gap-6 relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1 transform-gpu will-change-transform`}>
       <div className="flex-1">
         <div className="flex flex-wrap justify-between items-start mb-2 gap-2">
           <div className="flex items-center gap-2">
@@ -1127,7 +1135,7 @@ const App: React.FC = () => {
     <>
       <div className="hidden md:flex w-64 bg-slate-900 text-slate-100 flex-col h-screen fixed left-0 top-0 overflow-y-auto no-print z-10 shadow-xl transform-gpu">
         <div className="p-6">
-          <h1 className="text-2xl font-bold flex items-center gap-2 text-blue-400"><Wrench className="w-8 h-8" />Мастерская</h1>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><Wrench className="w-8 h-8 text-blue-400" /><span className="text-gradient">Мастерская</span></h1>
           <button onClick={handleManualConnect} className="flex items-center gap-2 mt-4 text-xs bg-slate-800 py-1 px-2 rounded cursor-pointer hover:bg-slate-700 transition-colors w-full active:scale-95 duration-150 will-change-transform">
              {storageMode === 'cloud' ? <span className="text-green-400 flex items-center gap-1 font-bold"><Cloud className="w-3 h-3"/> Vercel DB</span> : <span className="text-orange-400 flex items-center gap-1 font-bold"><CloudOff className="w-3 h-3"/> Local Mode</span>}
              {isSyncing ? <RefreshCw className="w-3 h-3 ml-auto animate-spin text-slate-400" /> : <span className="ml-auto text-slate-500 text-[10px]">{storageMode === 'cloud' ? 'Connected' : 'Connect'}</span>}
@@ -1199,7 +1207,7 @@ const App: React.FC = () => {
                 setNewDevice({ status: DeviceStatus.RECEIVED, urgency: Urgency.NORMAL });
                 setShowAddDeviceModal(true);
             }} 
-            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 duration-200 hover:shadow-lg will-change-transform"
+            className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-5 py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 duration-200 hover:shadow-xl will-change-transform font-semibold"
         >
             <Plus className="w-5 h-5" />Принять
         </button>
@@ -1248,8 +1256,8 @@ const App: React.FC = () => {
         )}
       </div>
       {showAddDeviceModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-14 md:pt-4 md:items-center bg-black/50 backdrop-blur-sm animate-fade-in overflow-y-auto">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform flex flex-col relative mb-20 md:mb-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-lg animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform max-h-[85vh] overflow-y-auto">
             <div className="p-6 md:p-8">
                 <h3 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-100">{editingId ? 'Редактирование заказа' : 'Новое устройство'}</h3>
                 <div className="space-y-4">
