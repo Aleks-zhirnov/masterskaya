@@ -2,6 +2,14 @@ import { GoogleGenAI } from "@google/genai";
 
 const SYSTEM_PROMPT = "Вы опытный инженер-электронщик в домашней мастерской по ремонту бытовой и автомобильной электроники. Вы специализируетесь на: диагностике неисправностей плат, определении компонентов по маркировке (SMD коды, корпуса), поиске аналогов запчастей, чтении схем. Отвечайте кратко, профессионально и на русском языке. Используйте форматирование Markdown для списков.";
 
+// --- Список бесплатных моделей (fallback по порядку) ---
+const FREE_MODELS = [
+  "mistralai/mistral-small-3.1-24b-instruct:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "nvidia/llama-3.1-nemotron-nano-8b-v1:free",
+  "google/gemma-3-27b-it:free",
+];
+
 // --- Ключи: localStorage → env fallback ---
 
 export const getOpenRouterKey = (): string => {
@@ -18,53 +26,96 @@ const getGeminiClient = (): GoogleGenAI | null => {
   return new GoogleGenAI({ apiKey });
 };
 
-const generateViaOpenRouter = async (prompt: string): Promise<string> => {
+// --- Вспомогательная функция для вызова OpenRouter с retry + fallback ---
+
+const callOpenRouter = async (
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> => {
   const apiKey = getOpenRouterKey() || process.env.OPENROUTER_API_KEY || '';
   if (!apiKey) return "";
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-      "HTTP-Referer": window.location.origin,
-      "X-Title": "Workshop AI Assistant",
-    },
-    body: JSON.stringify({
-      model: "mistralai/mistral-small-3.1-24b-instruct:free",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    let errorDetail = '';
+  for (const model of FREE_MODELS) {
     try {
-      const errBody = await res.json();
-      errorDetail = errBody?.error?.message || JSON.stringify(errBody);
-    } catch { errorDetail = await res.text().catch(() => ''); }
+      console.log(`[AI] Trying model: ${model}`);
 
-    const statusMessages: Record<number, string> = {
-      401: '❌ Неверный API ключ. Проверьте ключ в настройках или получите новый на openrouter.ai',
-      402: '❌ Закончился баланс на OpenRouter. Пополните счёт или используйте бесплатную модель.',
-      403: '❌ Доступ запрещён. Проверьте права API ключа на openrouter.ai',
-      408: '⏱ Таймаут запроса. Попробуйте ещё раз.',
-      429: '⏳ Слишком много запросов. Подождите минуту и попробуйте снова.',
-      500: '🔧 Ошибка сервера OpenRouter. Попробуйте позже.',
-      502: '🔧 Сервер OpenRouter временно недоступен. Попробуйте позже.',
-      503: '🔧 Модель перегружена. Попробуйте через пару минут.',
-    };
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "HTTP-Referer": window.location.origin,
+          "X-Title": "Workshop AI Assistant",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          provider: {
+            allow_fallbacks: true,
+          },
+        }),
+      });
 
-    const userMessage = statusMessages[res.status] || `❌ Ошибка OpenRouter (${res.status})`;
-    console.error("OpenRouter API Error:", res.status, errorDetail);
-    throw new Error(`${userMessage}${errorDetail ? `\n\nДетали: ${errorDetail}` : ''}`);
+      if (res.status === 429) {
+        console.warn(`[AI] Rate limited on ${model}, trying next...`);
+        // Ждём 2 секунды перед следующей моделью
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+
+      if (res.status === 404) {
+        console.warn(`[AI] Model ${model} not found, trying next...`);
+        continue;
+      }
+
+      if (!res.ok) {
+        let errorDetail = '';
+        try {
+          const errBody = await res.json();
+          errorDetail = errBody?.error?.message || JSON.stringify(errBody);
+        } catch { errorDetail = await res.text().catch(() => ''); }
+
+        const statusMessages: Record<number, string> = {
+          401: '❌ Неверный API ключ. Проверьте ключ в настройках или получите новый на openrouter.ai',
+          402: '❌ Закончился баланс на OpenRouter. Пополните счёт или используйте бесплатную модель.',
+          403: '❌ Доступ запрещён. Проверьте права API ключа на openrouter.ai',
+          408: '⏱ Таймаут запроса. Попробуйте ещё раз.',
+          500: '🔧 Ошибка сервера OpenRouter. Попробуйте позже.',
+          502: '🔧 Сервер OpenRouter временно недоступен. Попробуйте позже.',
+          503: '🔧 Модель перегружена. Попробуйте через пару минут.',
+        };
+
+        const userMessage = statusMessages[res.status] || `❌ Ошибка OpenRouter (${res.status})`;
+        console.error("OpenRouter API Error:", res.status, errorDetail);
+        throw new Error(`${userMessage}${errorDetail ? `\n\nДетали: ${errorDetail}` : ''}`);
+      }
+
+      const data = await res.json();
+      const raw = data.choices?.[0]?.message?.content || "";
+      const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+
+      if (cleaned) {
+        console.log(`[AI] Success with model: ${model}`);
+        return cleaned;
+      }
+
+      // Если ответ пустой — пробуем следующую модель
+      console.warn(`[AI] Empty response from ${model}, trying next...`);
+      continue;
+
+    } catch (error: any) {
+      // Если это наша ошибка с сообщением для пользователя — пробрасываем
+      if (error?.message?.startsWith('❌')) throw error;
+      console.warn(`[AI] Error with ${model}:`, error.message);
+      continue;
+    }
   }
 
-  const data = await res.json();
-  const raw = data.choices?.[0]?.message?.content || "";
-  return raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  // Все модели исчерпаны
+  throw new Error('⏳ Все бесплатные модели перегружены. Подождите 1-2 минуты и попробуйте снова.');
 };
 
 export const generateWorkshopAdvice = async (prompt: string): Promise<string> => {
@@ -85,7 +136,7 @@ export const generateWorkshopAdvice = async (prompt: string): Promise<string> =>
   const hasKey = !!getOpenRouterKey();
 
   try {
-    const result = await generateViaOpenRouter(prompt);
+    const result = await callOpenRouter(SYSTEM_PROMPT, prompt);
     if (result) return result;
     if (!hasKey) return "🔑 Для работы AI введите ключ OpenRouter в настройках выше (бесплатно на openrouter.ai).";
     return "AI вернул пустой ответ. Попробуйте переформулировать вопрос.";
@@ -141,35 +192,7 @@ export const beautifyDeviceText = async (
   const apiKey = getOpenRouterKey() || process.env.OPENROUTER_API_KEY || '';
   if (!apiKey) throw new Error('🔑 Для работы AI введите ключ OpenRouter в настройках AI чата.');
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
-      "HTTP-Referer": window.location.origin,
-      "X-Title": "Workshop AI Assistant",
-    },
-    body: JSON.stringify({
-      model: "mistralai/mistral-small-3.1-24b-instruct:free",
-      messages: [
-        { role: "system", content: BEAUTIFY_PROMPT },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    let errorDetail = '';
-    try {
-      const errBody = await res.json();
-      errorDetail = errBody?.error?.message || '';
-    } catch { }
-    throw new Error(`Ошибка AI (${res.status}): ${errorDetail || 'попробуйте позже'}`);
-  }
-
-  const data = await res.json();
-  const raw = data.choices?.[0]?.message?.content || "";
-  const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  const cleaned = await callOpenRouter(BEAUTIFY_PROMPT, prompt);
 
   if (!cleaned) throw new Error('AI вернул пустой ответ. Попробуйте ещё раз.');
 
