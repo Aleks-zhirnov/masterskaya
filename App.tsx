@@ -49,10 +49,11 @@ import {
   MessageCircle,
   Archive,
   Sun,
-  Moon
+  Moon,
+  Sparkles
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
-import { generateWorkshopAdvice, getOpenRouterKey, setOpenRouterKey } from './services/ai';
+import { generateWorkshopAdvice, getOpenRouterKey, setOpenRouterKey, beautifyDeviceText } from './services/ai';
 import { Printables } from './components/Printables';
 
 // --- CONSTANTS ---
@@ -601,6 +602,9 @@ const App: React.FC = () => {
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
 
+  // AI Beautify State
+  const [aiEditingDeviceId, setAiEditingDeviceId] = useState<string | null>(null);
+
   // API Key State
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [showApiKeyForm, setShowApiKeyForm] = useState(!getOpenRouterKey());
@@ -1064,6 +1068,33 @@ const App: React.FC = () => {
     }
   };
 
+  // --- AI BEAUTIFY ---
+  const handleAiBeautify = async (device: Device) => {
+    if (aiEditingDeviceId) return; // уже идёт обработка
+    setAiEditingDeviceId(device.id);
+    try {
+      const result = await beautifyDeviceText(
+        device.deviceModel,
+        device.issueDescription,
+        device.notes
+      );
+      const updatedDevice: Device = {
+        ...device,
+        issueDescription: result.issueDescription,
+        notes: result.notes !== undefined ? result.notes : device.notes,
+      };
+      const updatedDevices = devices.map(d =>
+        d.id === device.id ? updatedDevice : d
+      );
+      persistDevice(updatedDevices, updatedDevice);
+    } catch (error: any) {
+      console.error('AI Beautify Error:', error);
+      alert(error?.message || 'Ошибка AI. Попробуйте позже.');
+    } finally {
+      setAiEditingDeviceId(null);
+    }
+  };
+
   // --- RENDERERS ---
   const getUrgencyBorder = (u: Urgency) => {
     switch (u) {
@@ -1145,6 +1176,20 @@ const App: React.FC = () => {
           )}
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => handleAiBeautify(device)}
+            disabled={!!aiEditingDeviceId}
+            className={`flex-1 p-2 rounded transition-all active:scale-90 duration-200 border flex justify-center items-center ${aiEditingDeviceId === device.id
+                ? 'text-amber-600 bg-amber-50 border-amber-200 animate-pulse'
+                : 'text-amber-400 hover:text-amber-600 hover:bg-amber-50 border-slate-100'
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
+            title="AI: улучшить описание"
+          >
+            {aiEditingDeviceId === device.id
+              ? <RefreshCw className="w-5 h-5 animate-spin" />
+              : <Sparkles className="w-5 h-5" />
+            }
+          </button>
           <button onClick={() => handleEditDevice(device)} className="flex-1 text-slate-400 hover:text-blue-600 p-2 rounded hover:bg-blue-50 transition-all active:scale-90 duration-200 border border-slate-100 flex justify-center items-center"><Pencil className="w-5 h-5" /></button>
           <button onClick={() => deleteDevice(device.id)} className="flex-1 text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-all active:scale-90 duration-200 border border-slate-100 flex justify-center items-center"><Trash2 className="w-5 h-5" /></button>
         </div>
@@ -1455,8 +1500,8 @@ const App: React.FC = () => {
           <div className="flex flex-col h-[calc(100vh-80px)] md:h-screen p-4 max-w-3xl mx-auto pt-4 md:pt-8">
             {/* Настройка API ключа */}
             <div className={`rounded-xl mb-4 border transition-all duration-300 ${hasApiKey && !showApiKeyForm
-                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 p-3'
-                : 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 p-4'
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 p-3'
+              : 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 p-4'
               }`}>
               {hasApiKey && !showApiKeyForm ? (
                 /* Ключ введён — компактный статус */
