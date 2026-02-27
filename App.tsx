@@ -1323,60 +1323,6 @@ const App: React.FC = () => {
             filteredDevices.map((device) => renderDeviceCard(device))
           )}
         </div>
-        {showAddDeviceModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-lg animate-fade-in" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }} onClick={(e) => { if (e.target === e.currentTarget) { setShowAddDeviceModal(false); setEditingId(null); } }}>
-            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up transform-gpu will-change-transform max-h-[90vh] overflow-y-auto" style={{ margin: 'auto' }}>
-              <div className="p-6 md:p-8">
-                <h3 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-100">{editingId ? 'Редактирование заказа' : 'Новое устройство'}</h3>
-                <div className="space-y-4">
-                  <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Модель</label><input type="text" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.deviceModel || ''} onChange={e => setNewDevice({ ...newDevice, deviceModel: e.target.value })} /></div>
-                  <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Клиент</label><input type="text" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientName || ''} onChange={e => setNewDevice({ ...newDevice, clientName: e.target.value })} /></div>
-                  <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Телефон</label><input type="tel" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientPhone || ''} onChange={e => setNewDevice({ ...newDevice, clientPhone: e.target.value })} placeholder="+7 (999) 123-45-67" /></div>
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <label className="text-sm font-medium text-slate-700">Дата приема</label>
-                      <input type="date" className="w-full p-3 border border-slate-300 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.dateReceived ? newDevice.dateReceived.split('T')[0] : new Date().toLocaleDateString('en-CA')} onChange={e => setNewDevice({ ...newDevice, dateReceived: e.target.value })} />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-sm font-medium text-slate-700">Срочность</label>
-                      <select
-                        value={newDevice.urgency}
-                        onChange={e => setNewDevice({ ...newDevice, urgency: e.target.value as Urgency })}
-                        className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                      >
-                        <option value={Urgency.NORMAL}>Обычная</option>
-                        <option value={Urgency.HIGH}>Важно</option>
-                        <option value={Urgency.CRITICAL}>Срочно!</option>
-                      </select>
-                    </div>
-                  </div>
-                  {editingId && (
-                    <div>
-                      <label className="text-sm font-medium text-slate-700">Статус</label>
-                      <select
-                        value={newDevice.status}
-                        onChange={e => setNewDevice({ ...newDevice, status: e.target.value as DeviceStatus })}
-                        className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                      >
-                        {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </div>
-                  )}
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Стоимость ремонта (₽)</label>
-                    <input type="number" min="0" step="100" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.estimatedCost || ''} onChange={e => setNewDevice({ ...newDevice, estimatedCost: e.target.value ? parseFloat(e.target.value) : undefined })} placeholder="0" />
-                  </div>
-                  <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Поломка</label><textarea className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none h-20 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.issueDescription || ''} onChange={e => setNewDevice({ ...newDevice, issueDescription: e.target.value })} /></div>
-                  <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Заметки мастера</label><textarea className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none h-16 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.notes || ''} onChange={e => setNewDevice({ ...newDevice, notes: e.target.value })} placeholder="Заметки по ремонту..." /></div>
-                  <div className="flex gap-3 pt-2">
-                    <button onClick={() => { setShowAddDeviceModal(false); setEditingId(null); }} className="flex-1 py-3 text-slate-600 font-medium bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors active:scale-95 duration-200">Отмена</button>
-                    <button onClick={handleSaveDevice} className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors active:scale-95 duration-200 shadow-md">Сохранить</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -1572,7 +1518,7 @@ const App: React.FC = () => {
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
-                    {msg.role === 'model' && <div className="flex items-center gap-1 mb-1 text-xs font-bold text-blue-600 opacity-75"><Bot className="w-3 h-3" /> AI (DeepSeek R1)</div>}
+                    {msg.role === 'model' && <div className="flex items-center gap-1 mb-1 text-xs font-bold text-blue-600 opacity-75"><Bot className="w-3 h-3" /> AI (Gemma 2)</div>}
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</div>
                   </div>
                 </div>
@@ -1784,6 +1730,61 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {showAddDeviceModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-lg animate-fade-in" onClick={(e) => { if (e.target === e.currentTarget) { setShowAddDeviceModal(false); setEditingId(null); } }}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
+            <div className="p-6 md:p-8">
+              <h3 className="text-2xl font-bold mb-4 text-slate-800 dark:text-slate-100">{editingId ? 'Редактирование заказа' : 'Новое устройство'}</h3>
+              <div className="space-y-4">
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Модель</label><input type="text" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.deviceModel || ''} onChange={e => setNewDevice({ ...newDevice, deviceModel: e.target.value })} /></div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Клиент</label><input type="text" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientName || ''} onChange={e => setNewDevice({ ...newDevice, clientName: e.target.value })} /></div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Телефон</label><input type="tel" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.clientPhone || ''} onChange={e => setNewDevice({ ...newDevice, clientPhone: e.target.value })} placeholder="+7 (999) 123-45-67" /></div>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Дата приема</label>
+                    <input type="date" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.dateReceived ? newDevice.dateReceived.split('T')[0] : new Date().toLocaleDateString('en-CA')} onChange={e => setNewDevice({ ...newDevice, dateReceived: e.target.value })} />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Срочность</label>
+                    <select
+                      value={newDevice.urgency}
+                      onChange={e => setNewDevice({ ...newDevice, urgency: e.target.value as Urgency })}
+                      className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                    >
+                      <option value={Urgency.NORMAL}>Обычная</option>
+                      <option value={Urgency.HIGH}>Важно</option>
+                      <option value={Urgency.CRITICAL}>Срочно!</option>
+                    </select>
+                  </div>
+                </div>
+                {editingId && (
+                  <div>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Статус</label>
+                    <select
+                      value={newDevice.status}
+                      onChange={e => setNewDevice({ ...newDevice, status: e.target.value as DeviceStatus })}
+                      className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                    >
+                      {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Стоимость ремонта (₽)</label>
+                  <input type="number" min="0" step="100" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.estimatedCost || ''} onChange={e => setNewDevice({ ...newDevice, estimatedCost: e.target.value ? parseFloat(e.target.value) : undefined })} placeholder="0" />
+                </div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Поломка</label><textarea className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none h-20 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.issueDescription || ''} onChange={e => setNewDevice({ ...newDevice, issueDescription: e.target.value })} /></div>
+                <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Заметки мастера</label><textarea className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none h-16 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.notes || ''} onChange={e => setNewDevice({ ...newDevice, notes: e.target.value })} placeholder="Заметки по ремонту..." /></div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => { setShowAddDeviceModal(false); setEditingId(null); }} className="flex-1 py-3 text-slate-600 dark:text-slate-300 font-medium bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors active:scale-95 duration-200">Отмена</button>
+                  <button onClick={handleSaveDevice} className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors active:scale-95 duration-200 shadow-md">Сохранить</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <WorkshopRobot />
     </div>
