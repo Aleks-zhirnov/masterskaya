@@ -1431,7 +1431,7 @@ const App: React.FC = () => {
         {view === 'ai_chat' && (
             <div className="flex flex-col h-[calc(100vh-80px)] md:h-screen p-4 max-w-3xl mx-auto pt-4 md:pt-8">
                {/* Настройка API ключа */}
-               {!getOpenRouterKey() && !process.env.API_KEY && (
+               {!getOpenRouterKey() && (
                  <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-4 animate-fade-in">
                    <div className="text-sm font-bold text-amber-800 dark:text-amber-300 mb-2">Настройте AI помощника (бесплатно)</div>
                    <div className="text-xs text-amber-700 dark:text-amber-400 mb-3">Зарегистрируйтесь на <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline font-bold">openrouter.ai</a>, скопируйте API ключ и вставьте ниже. Ключ сохранится в браузере навсегда.</div>
