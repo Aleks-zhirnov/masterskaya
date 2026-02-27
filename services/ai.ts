@@ -31,7 +31,7 @@ const generateViaOpenRouter = async (prompt: string): Promise<string> => {
       "X-Title": "Workshop AI Assistant",
     },
     body: JSON.stringify({
-      model: "google/gemma-2-9b-it:free",
+      model: "mistralai/mistral-small-3.1-24b-instruct:free",
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: prompt },
@@ -150,7 +150,7 @@ export const beautifyDeviceText = async (
       "X-Title": "Workshop AI Assistant",
     },
     body: JSON.stringify({
-      model: "google/gemma-2-9b-it:free",
+      model: "mistralai/mistral-small-3.1-24b-instruct:free",
       messages: [
         { role: "system", content: BEAUTIFY_PROMPT },
         { role: "user", content: prompt },
