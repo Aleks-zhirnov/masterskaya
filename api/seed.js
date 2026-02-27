@@ -51,6 +51,24 @@ export default async function handler(request, response) {
         console.log("Column 'isPlanned' migration note:", e.message);
     }
 
+    try {
+        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS clientPhone varchar(50)`;
+    } catch (e) {
+        console.log("Column 'clientPhone' migration note:", e.message);
+    }
+
+    try {
+        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS estimatedCost decimal(10,2)`;
+    } catch (e) {
+        console.log("Column 'estimatedCost' migration note:", e.message);
+    }
+
+    try {
+        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS isArchived boolean DEFAULT false`;
+    } catch (e) {
+        console.log("Column 'isArchived' migration note:", e.message);
+    }
+
     return response.status(200).json({ message: 'Database tables created/updated successfully' });
   } catch (error) {
     return response.status(500).json({ error: error.message });
