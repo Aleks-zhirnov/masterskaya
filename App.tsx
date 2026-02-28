@@ -1454,7 +1454,7 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                    <span className="text-sm font-medium text-green-800 dark:text-green-300">OpenRouter API ключ настроен</span>
+                    <span className="text-sm font-medium text-green-800 dark:text-green-300">API ключ настроен</span>
                     <span className="text-xs text-green-600/60 dark:text-green-400/50 font-mono">••••••••{getOpenRouterKey().slice(-4)}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -1489,8 +1489,12 @@ const App: React.FC = () => {
                     )}
                   </div>
                   {!hasApiKey && (
-                    <div className="text-xs text-amber-700 dark:text-amber-400 mb-3">
-                      Зарегистрируйтесь на <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-900 dark:hover:text-amber-200">openrouter.ai</a>, скопируйте API ключ и вставьте ниже. Ключ сохранится в вашем браузере навсегда.
+                    <div className="text-xs text-amber-900 dark:text-amber-200 mb-3 bg-white/50 dark:bg-black/20 p-3 rounded-lg border border-amber-200 dark:border-amber-700/50">
+                      <p className="font-bold mb-1">💡 Рекомендуется использовать Google Gemini (полностью бесплатно, 1500 запросов в день!):</p>
+                      <p className="mb-2">Перейдите на <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline text-blue-600 dark:text-blue-400">aistudio.google.com/app/apikey</a> и скопируйте ключ.</p>
+
+                      <p className="font-bold mb-1 mt-2">ℹ️ Либо используйте OpenRouter (имеет сильные лимиты):</p>
+                      <p>Скопируйте ключ на <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline text-blue-600 dark:text-blue-400">openrouter.ai</a>.</p>
                     </div>
                   )}
                   <div className="flex gap-2">
@@ -1499,7 +1503,7 @@ const App: React.FC = () => {
                       value={apiKeyInput}
                       onChange={e => setApiKeyInput(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleSaveApiKey()}
-                      placeholder="sk-or-v1-..."
+                      placeholder="AIzaSy... (Gemini) или sk-or-v1-... (OpenRouter)"
                       className="flex-1 p-2 text-sm border border-amber-300 dark:border-amber-700 dark:bg-slate-800 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900 transition-all"
                     />
                     <button
@@ -1518,7 +1522,7 @@ const App: React.FC = () => {
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
-                    {msg.role === 'model' && <div className="flex items-center gap-1 mb-1 text-xs font-bold text-blue-600 opacity-75"><Bot className="w-3 h-3" /> AI (Mistral)</div>}
+                    {msg.role === 'model' && <div className="flex items-center gap-1 mb-1 text-xs font-bold text-blue-600 opacity-75"><Bot className="w-3 h-3" /> AI Ассистент</div>}
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</div>
                   </div>
                 </div>

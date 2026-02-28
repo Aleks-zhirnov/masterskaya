@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 
 const SYSTEM_PROMPT = "Вы опытный инженер-электронщик в домашней мастерской по ремонту бытовой и автомобильной электроники. Вы специализируетесь на: диагностике неисправностей плат, определении компонентов по маркировке (SMD коды, корпуса), поиске аналогов запчастей, чтении схем. Отвечайте кратко, профессионально и на русском языке. Используйте форматирование Markdown для списков.";
 
-// --- Список бесплатных моделей (fallback по порядку) ---
+// --- Список бесплатных моделей OpenRouter (fallback по порядку) ---
 const FREE_MODELS = [
   "mistralai/mistral-small-3.1-24b-instruct:free",
   "meta-llama/llama-3.3-70b-instruct:free",
@@ -10,34 +10,40 @@ const FREE_MODELS = [
   "google/gemma-3-27b-it:free",
 ];
 
-// --- Ключи: localStorage → env fallback ---
-
+// Для сохранения совместимости с App.tsx оставляем старые названия функций
 export const getOpenRouterKey = (): string => {
   try { return localStorage.getItem('workshop_openrouter_key') || ''; } catch { return ''; }
 };
 
 export const setOpenRouterKey = (key: string) => {
-  try { localStorage.setItem('workshop_openrouter_key', key); } catch { }
+  try { localStorage.setItem('workshop_openrouter_key', key.trim()); } catch { }
 };
 
-const getGeminiClient = (): GoogleGenAI | null => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) return null;
-  return new GoogleGenAI({ apiKey });
+// --- Вспомогательная функция для Google Gemini ---
+const callGemini = async (systemPrompt: string, userPrompt: string, apiKey: string): Promise<string> => {
+  try {
+    const gemini = new GoogleGenAI({ apiKey });
+    const response = await gemini.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: userPrompt,
+      config: { systemInstruction: systemPrompt },
+    });
+    return response.text || "";
+  } catch (error: any) {
+    console.error("Gemini Error:", error);
+    throw new Error(`❌ Ошибка Google Gemini: ${error.message || 'Проверьте правильность API ключа.'}`);
+  }
 };
 
-// --- Вспомогательная функция для вызова OpenRouter с retry + fallback ---
-
+// --- Вспомогательная функция для OpenRouter ---
 const callOpenRouter = async (
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  apiKey: string
 ): Promise<string> => {
-  const apiKey = getOpenRouterKey() || process.env.OPENROUTER_API_KEY || '';
-  if (!apiKey) return "";
-
   for (const model of FREE_MODELS) {
     try {
-      console.log(`[AI] Trying model: ${model}`);
+      console.log(`[AI] Trying OpenRouter model: ${model}`);
 
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -61,7 +67,7 @@ const callOpenRouter = async (
 
       if (res.status === 429) {
         console.warn(`[AI] Rate limited on ${model}, trying next...`);
-        // Ждём 2 секунды перед следующей моделью
+        // Ждём 2 секунды
         await new Promise(r => setTimeout(r, 2000));
         continue;
       }
@@ -98,54 +104,50 @@ const callOpenRouter = async (
       const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 
       if (cleaned) {
-        console.log(`[AI] Success with model: ${model}`);
+        console.log(`[AI] Success with OpenRouter model: ${model}`);
         return cleaned;
       }
 
-      // Если ответ пустой — пробуем следующую модель
       console.warn(`[AI] Empty response from ${model}, trying next...`);
       continue;
 
     } catch (error: any) {
-      // Если это наша ошибка с сообщением для пользователя — пробрасываем
       if (error?.message?.startsWith('❌')) throw error;
       console.warn(`[AI] Error with ${model}:`, error.message);
       continue;
     }
   }
 
-  // Все модели исчерпаны
-  throw new Error('⏳ Все бесплатные модели перегружены. Подождите 1-2 минуты и попробуйте снова.');
+  throw new Error('⏳ Все бесплатные модели OpenRouter перегружены. Пожалуйста, используйте API ключ от Google Gemini (он абсолютно бесплатный и без таких лимитов).');
+};
+
+const dispatchAI = async (systemPrompt: string, userPrompt: string): Promise<string> => {
+  const apiKey = getOpenRouterKey();
+  if (!apiKey) {
+    throw new Error("🔑 Введите API ключ (Google Gemini или OpenRouter) в настройках.");
+  }
+
+  // Если ключ начинается с sk-or- это OpenRouter. Иначе считаем что это Google Gemini.
+  if (apiKey.startsWith('sk-or-')) {
+    return await callOpenRouter(systemPrompt, userPrompt, apiKey);
+  } else {
+    return await callGemini(systemPrompt, userPrompt, apiKey);
+  }
 };
 
 export const generateWorkshopAdvice = async (prompt: string): Promise<string> => {
-  const gemini = getGeminiClient();
-  if (gemini) {
-    try {
-      const response = await gemini.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: prompt,
-        config: { systemInstruction: SYSTEM_PROMPT },
-      });
-      return response.text || "Не удалось получить ответ от AI.";
-    } catch (error) {
-      console.error("Gemini Error:", error);
-    }
+  const apiKey = getOpenRouterKey();
+  if (!apiKey) {
+    return "🔑 Для работы AI введите ключ Google Gemini или OpenRouter в настройках выше. Рекомендуется Google Gemini, так как он не имеет жестких лимитов!";
   }
 
-  const hasKey = !!getOpenRouterKey();
-
   try {
-    const result = await callOpenRouter(SYSTEM_PROMPT, prompt);
+    const result = await dispatchAI(SYSTEM_PROMPT, prompt);
     if (result) return result;
-    if (!hasKey) return "🔑 Для работы AI введите ключ OpenRouter в настройках выше (бесплатно на openrouter.ai).";
     return "AI вернул пустой ответ. Попробуйте переформулировать вопрос.";
   } catch (error: any) {
-    console.error("OpenRouter Error:", error);
-    if (error?.message) return error.message;
-    return hasKey
-      ? "⚠️ Ошибка при обращении к OpenRouter. Проверьте интернет-соединение."
-      : "🔑 Для работы AI введите ключ OpenRouter в настройках выше (бесплатно на openrouter.ai).";
+    console.error("AI Dispatch Error:", error);
+    return error?.message || "⚠️ Ошибка при обращении к нейросети. Проверьте интернет-соединение.";
   }
 };
 
@@ -189,10 +191,10 @@ export const beautifyDeviceText = async (
 
   const prompt = parts.join('\n');
 
-  const apiKey = getOpenRouterKey() || process.env.OPENROUTER_API_KEY || '';
-  if (!apiKey) throw new Error('🔑 Для работы AI введите ключ OpenRouter в настройках AI чата.');
+  const apiKey = getOpenRouterKey();
+  if (!apiKey) throw new Error('🔑 Введите API ключ в настройках AI чата.');
 
-  const cleaned = await callOpenRouter(BEAUTIFY_PROMPT, prompt);
+  const cleaned = await dispatchAI(BEAUTIFY_PROMPT, prompt);
 
   if (!cleaned) throw new Error('AI вернул пустой ответ. Попробуйте ещё раз.');
 
