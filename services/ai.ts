@@ -2,13 +2,34 @@ import { GoogleGenAI } from "@google/genai";
 
 const SYSTEM_PROMPT = "Вы опытный инженер-электронщик в домашней мастерской по ремонту бытовой и автомобильной электроники. Вы специализируетесь на: диагностике неисправностей плат, определении компонентов по маркировке (SMD коды, корпуса), поиске аналогов запчастей, чтении схем. Отвечайте кратко, профессионально и на русском языке. Используйте форматирование Markdown для списков.";
 
-// --- Список бесплатных моделей OpenRouter (fallback по порядку) ---
-const FREE_MODELS = [
-  "mistralai/mistral-small-3.1-24b-instruct:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "nvidia/llama-3.1-nemotron-nano-8b-v1:free",
-  "google/gemma-3-27b-it:free",
-];
+// --- Динамический список бесплатных моделей OpenRouter ---
+// Модели OpenRouter часто меняются, поэтому мы скачиваем актуальные модели прямо перед запросом.
+let cachedFreeModels: string[] = [];
+
+const getAvailableFreeModels = async (): Promise<string[]> => {
+  if (cachedFreeModels.length > 0) return cachedFreeModels;
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/models");
+    const data = await res.json();
+    const models = data.data
+      .map((m: any) => m.id)
+      .filter((id: string) => id.endsWith(":free"));
+
+    // Перемешиваем массив, чтобы запросы шли к разным моделям (защита от 429 ошибки)
+    cachedFreeModels = models.sort(() => 0.5 - Math.random());
+    return cachedFreeModels;
+  } catch (e) {
+    // Резервный список, 100% рабочих на текущий момент
+    return [
+      "stepfun/step-3.5-flash:free",
+      "qwen/qwen3-next-80b-a3b-instruct:free",
+      "nvidia/nemotron-nano-9b-v2:free",
+      "z-ai/glm-4.5-air:free",
+      "liquid/lfm-2.5-1.2b-instruct:free",
+      "cognitivecomputations/dolphin-mistral-24b-venice-edition:free"
+    ];
+  }
+};
 
 // Для сохранения совместимости с App.tsx оставляем старые названия функций
 export const getOpenRouterKey = (): string => {
@@ -31,7 +52,20 @@ const callGemini = async (systemPrompt: string, userPrompt: string, apiKey: stri
     return response.text || "";
   } catch (error: any) {
     console.error("Gemini Error:", error);
-    throw new Error(`❌ Ошибка Google Gemini: ${error.message || 'Проверьте правильность API ключа.'}`);
+    let errorMsg = error.message || 'Проверьте правильность ключа.';
+
+    // Делаем красивый вывод ошибки для заблокированных ключей
+    if (errorMsg.includes('limit: 0') || errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('429 Quota Exceeded')) {
+      errorMsg = 'Google заблокировал бесплатный доступ к Gemini из вашего текущего региона (РФ). Без VPN не работает. Пожалуйста, используйте API ключ от OpenRouter (он работает без VPN).';
+    } else if (errorMsg.includes('leaked')) {
+      errorMsg = 'Этот API ключ заблокирован Google (так как он попал в открытый доступ в интернет). Пожалуйста, удалите его и создайте новый ключ.';
+    } else if (errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('key not valid')) {
+      errorMsg = 'Неверный API ключ. Проверьте, что скопировали его без пробелов на aistudio.google.com';
+    } else if (errorMsg.includes('403')) {
+      errorMsg = 'Доступ запрещён. Проверьте правильность API ключа.';
+    }
+
+    throw new Error(`❌ Ошибка Google Gemini: ${errorMsg}`);
   }
 };
 
@@ -41,7 +75,11 @@ const callOpenRouter = async (
   userPrompt: string,
   apiKey: string
 ): Promise<string> => {
-  for (const model of FREE_MODELS) {
+  const freeModels = await getAvailableFreeModels();
+  // Берём первые 5 случайных бесплатных моделей, чтобы попробовать
+  const modelsToTry = freeModels.slice(0, 5);
+
+  for (const model of modelsToTry) {
     try {
       console.log(`[AI] Trying OpenRouter model: ${model}`);
 
@@ -60,20 +98,14 @@ const callOpenRouter = async (
             { role: "user", content: userPrompt },
           ],
           provider: {
-            allow_fallbacks: true,
+            allow_fallbacks: true, // Даем право OpenRouter самому искать
           },
         }),
       });
 
-      if (res.status === 429) {
-        console.warn(`[AI] Rate limited on ${model}, trying next...`);
-        // Ждём 2 секунды
-        await new Promise(r => setTimeout(r, 2000));
-        continue;
-      }
-
-      if (res.status === 404) {
-        console.warn(`[AI] Model ${model} not found, trying next...`);
+      // Сразу переходим к следующей модели, если лимит или не найдено
+      if (res.status === 429 || res.status === 404) {
+        console.warn(`[AI] Model ${model} skipped (${res.status}), trying next...`);
         continue;
       }
 
@@ -84,19 +116,18 @@ const callOpenRouter = async (
           errorDetail = errBody?.error?.message || JSON.stringify(errBody);
         } catch { errorDetail = await res.text().catch(() => ''); }
 
-        const statusMessages: Record<number, string> = {
-          401: '❌ Неверный API ключ. Проверьте ключ в настройках или получите новый на openrouter.ai',
-          402: '❌ Закончился баланс на OpenRouter. Пополните счёт или используйте бесплатную модель.',
-          403: '❌ Доступ запрещён. Проверьте права API ключа на openrouter.ai',
-          408: '⏱ Таймаут запроса. Попробуйте ещё раз.',
-          500: '🔧 Ошибка сервера OpenRouter. Попробуйте позже.',
-          502: '🔧 Сервер OpenRouter временно недоступен. Попробуйте позже.',
-          503: '🔧 Модель перегружена. Попробуйте через пару минут.',
-        };
+        // Если проблема с ключом (401-403), нет смысла пробовать другие модели
+        if (res.status === 401 || res.status === 402 || res.status === 403) {
+          const statusMessages: Record<number, string> = {
+            401: '❌ Неверный API ключ. Проверьте ключ в настройках или получите новый на openrouter.ai',
+            402: '❌ Закончился баланс на OpenRouter. Пополните счёт или используйте бесплатную модель.',
+            403: '❌ Доступ запрещён. Проверьте права API ключа на openrouter.ai',
+          };
+          throw new Error(statusMessages[res.status] || `❌ Ошибка ${res.status}`);
+        }
 
-        const userMessage = statusMessages[res.status] || `❌ Ошибка OpenRouter (${res.status})`;
-        console.error("OpenRouter API Error:", res.status, errorDetail);
-        throw new Error(`${userMessage}${errorDetail ? `\n\nДетали: ${errorDetail}` : ''}`);
+        console.warn(`[AI] Error ${res.status} on ${model}, trying next...`);
+        continue;
       }
 
       const data = await res.json();
@@ -118,7 +149,7 @@ const callOpenRouter = async (
     }
   }
 
-  throw new Error('⏳ Все бесплатные модели OpenRouter перегружены. Пожалуйста, используйте API ключ от Google Gemini (он абсолютно бесплатный и без таких лимитов).');
+  throw new Error('⏳ Все 5 выбранных бесплатных моделей сейчас перегружены. Немного подождите и отправьте запрос снова.');
 };
 
 const dispatchAI = async (systemPrompt: string, userPrompt: string): Promise<string> => {
