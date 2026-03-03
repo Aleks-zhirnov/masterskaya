@@ -242,3 +242,18 @@ export const beautifyDeviceText = async (
 
   return { issueDescription: cleaned };
 };
+
+const PRICE_ESTIMATE_PROMPT = `Ты опытный частный мастер по ремонту электроники в Московской области.
+Клиент просит оценить примерную стоимость ремонта его устройства.
+Оцени стоимость работы (без учета запчастей) в рублях для данного устройства и типичной поломки в Московском регионе (частный мастер, не крупный СЦ).
+Верни КРАТКИЙ ответ в формате:
+"Рекомендуемая цена: ~XXXX руб. (причина/зависит от сложности)". Без лишних слов.`;
+
+export const estimateRepairPrice = async (deviceModel: string, issueDescription: string): Promise<string> => {
+  const prompt = `Устройство: ${deviceModel}\nПоломка: ${issueDescription}\nОцени стоимость работы в МО.`;
+  const apiKey = getOpenRouterKey();
+  if (!apiKey) throw new Error('🔑 Введите API ключ в настройках AI чата для оценки стоимости.');
+
+  const result = await dispatchAI(PRICE_ESTIMATE_PROMPT, prompt);
+  return result || "Не удалось оценить стоимость.";
+};

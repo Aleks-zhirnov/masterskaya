@@ -27,6 +27,7 @@ export interface Device {
   statusChangedAt?: string; // ISO string, для автоудаления
   isPlanned?: boolean; // План на завтра
   isArchived?: boolean;
+  isWarranty?: boolean; // По гарантии
 }
 
 export enum PartType {

@@ -47,7 +47,7 @@ import {
   Percent
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
-import { generateWorkshopAdvice, getOpenRouterKey, setOpenRouterKey, beautifyDeviceText } from './services/ai';
+import { generateWorkshopAdvice, getOpenRouterKey, setOpenRouterKey, beautifyDeviceText, estimateRepairPrice } from './services/ai';
 import { Printables } from './components/Printables';
 
 // --- CONSTANTS ---
@@ -598,6 +598,7 @@ const App: React.FC = () => {
 
   // AI Beautify State
   const [aiEditingDeviceId, setAiEditingDeviceId] = useState<string | null>(null);
+  const [isEstimatingPrice, setIsEstimatingPrice] = useState(false);
 
   // API Key State
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -858,6 +859,23 @@ const App: React.FC = () => {
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - start.getTime());
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  const handleEstimatePrice = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!newDevice.deviceModel || !newDevice.issueDescription) {
+      alert("Сначала заполните Модель и Поломку, чтобы AI мог оценить стоимость.");
+      return;
+    }
+    setIsEstimatingPrice(true);
+    try {
+      const priceText = await estimateRepairPrice(newDevice.deviceModel, newDevice.issueDescription);
+      alert("Оценка AI:\n" + priceText);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsEstimatingPrice(false);
+    }
   };
 
   const handleSaveDevice = () => {
@@ -1127,6 +1145,11 @@ const App: React.FC = () => {
             {device.urgency !== Urgency.NORMAL && (
               <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${getUrgencyColor(device.urgency)}`}>
                 {getUrgencyLabel(device.urgency)}
+              </span>
+            )}
+            {device.isWarranty && (
+              <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-purple-300 text-purple-700 bg-purple-100">
+                Гарантия
               </span>
             )}
           </div>
@@ -1880,6 +1903,7 @@ const App: React.FC = () => {
                   <div className="text-right whitespace-nowrap">
                     <div className="text-xs text-slate-500">
                       Принят: {new Date(device.dateReceived).toLocaleDateString('ru-RU')}
+                      {device.isWarranty && <span className="text-purple-600 font-bold ml-2">Гарантия</span>}
                     </div>
                     <div className="text-xs text-slate-500">
                       Выдан: {device.statusChangedAt ? new Date(device.statusChangedAt).toLocaleDateString('ru-RU') : '---'}
@@ -1928,6 +1952,10 @@ const App: React.FC = () => {
                     </select>
                   </div>
                 </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <input type="checkbox" id="warrantyCheck" checked={!!newDevice.isWarranty} onChange={e => setNewDevice({ ...newDevice, isWarranty: e.target.checked })} className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                  <label htmlFor="warrantyCheck" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">Принято по гарантии (Гарантийный ремонт)</label>
+                </div>
                 {editingId && (
                   <div>
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Статус</label>
@@ -1942,7 +1970,11 @@ const App: React.FC = () => {
                 )}
                 <div className="flex gap-4">
                   <div className="flex-1">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Стоимость ремонта (₽)</label>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex justify-between items-center mb-1">Стоимость ремонта (₽)
+                      <button onClick={handleEstimatePrice} disabled={isEstimatingPrice} className={`text-[10px] font-bold px-2 py-0.5 rounded transition-colors flex items-center gap-1 border ${isEstimatingPrice ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-blue-50 text-blue-600 hover:text-blue-800 hover:bg-blue-100 border-blue-200'} cursor-pointer`}>
+                        {isEstimatingPrice ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Bot className="w-3 h-3" />} Цена AI
+                      </button>
+                    </label>
                     <input type="number" min="0" step="100" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.estimatedCost || ''} onChange={e => setNewDevice({ ...newDevice, estimatedCost: e.target.value ? parseFloat(e.target.value) : undefined })} placeholder="0" />
                   </div>
                   <div className="flex-1">
