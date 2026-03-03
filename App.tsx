@@ -836,8 +836,8 @@ const App: React.FC = () => {
 
   const stats = useMemo(() => {
     const issuedDevices = activeDevices.filter(d => d.status === DeviceStatus.ISSUED);
-    const revenue = issuedDevices.filter(d => d.estimatedCost).reduce((sum, d) => sum + (d.estimatedCost || 0), 0);
-    const partsTotal = issuedDevices.reduce((sum, d) => sum + (d.partsCost || 0), 0);
+    const revenue = issuedDevices.filter(d => d.estimatedCost).reduce((sum, d) => sum + (parseFloat(String(d.estimatedCost)) || 0), 0);
+    const partsTotal = issuedDevices.reduce((sum, d) => sum + (parseFloat(String(d.partsCost)) || 0), 0);
     const netProfit = revenue - partsTotal;
     const margin = revenue > 0 ? Math.round((netProfit / revenue) * 100) : 0;
     return {
@@ -1175,8 +1175,8 @@ const App: React.FC = () => {
             <option value={Urgency.HIGH}>Важно</option>
             <option value={Urgency.CRITICAL}>Срочно!</option>
           </select>
-          {device.estimatedCost ? <span className="text-xs font-bold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded">{device.estimatedCost.toLocaleString('ru-RU')} ₽</span> : null}
-          {device.partsCost ? <span className="text-xs font-bold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded">ЗИП: {device.partsCost.toLocaleString('ru-RU')} ₽</span> : null}
+          {device.estimatedCost ? <span className="text-xs font-bold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded">{Number(device.estimatedCost).toLocaleString('ru-RU')} ₽</span> : null}
+          {device.partsCost ? <span className="text-xs font-bold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded">ЗИП: {Number(device.partsCost).toLocaleString('ru-RU')} ₽</span> : null}
         </div>
         <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-2 md:p-3 rounded-md text-sm border border-red-100 dark:border-red-900/30 mb-2">{device.issueDescription}</div>
         {/* Inline notes */}
@@ -1855,8 +1855,8 @@ const App: React.FC = () => {
             {/* Revenue Summary */}
             {(() => {
               const archived = devices.filter(d => d.isArchived);
-              const archiveRevenue = archived.filter(d => d.estimatedCost).reduce((sum, d) => sum + (d.estimatedCost || 0), 0);
-              const archiveParts = archived.reduce((sum, d) => sum + (d.partsCost || 0), 0);
+              const archiveRevenue = archived.filter(d => d.estimatedCost).reduce((sum, d) => sum + (parseFloat(String(d.estimatedCost)) || 0), 0);
+              const archiveParts = archived.reduce((sum, d) => sum + (parseFloat(String(d.partsCost)) || 0), 0);
               const archiveNet = archiveRevenue - archiveParts;
               const archiveMargin = archiveRevenue > 0 ? Math.round((archiveNet / archiveRevenue) * 100) : 0;
               return (
@@ -1909,10 +1909,10 @@ const App: React.FC = () => {
                       Выдан: {device.statusChangedAt ? new Date(device.statusChangedAt).toLocaleDateString('ru-RU') : '---'}
                     </div>
                     {device.estimatedCost ? (
-                      <div className="text-sm font-bold text-emerald-600 mt-1">{device.estimatedCost.toLocaleString('ru-RU')} ₽</div>
+                      <div className="text-sm font-bold text-emerald-600 mt-1">{Number(device.estimatedCost).toLocaleString('ru-RU')} ₽</div>
                     ) : null}
                     {device.partsCost ? (
-                      <div className="text-xs text-orange-500">ЗИП: {device.partsCost.toLocaleString('ru-RU')} ₽</div>
+                      <div className="text-xs text-orange-500">ЗИП: {Number(device.partsCost).toLocaleString('ru-RU')} ₽</div>
                     ) : null}
                   </div>
                 </div>
