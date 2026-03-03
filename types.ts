@@ -22,6 +22,7 @@ export interface Device {
   status: DeviceStatus;
   urgency: Urgency;
   estimatedCost?: number;
+  partsCost?: number; // Стоимость запчастей
   notes?: string;
   statusChangedAt?: string; // ISO string, для автоудаления
   isPlanned?: boolean; // План на завтра

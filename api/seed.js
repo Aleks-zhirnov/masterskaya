@@ -28,45 +28,51 @@ export default async function handler(request, response) {
 
     // Миграции (безопасное добавление колонок)
     try {
-        await sql`ALTER TABLE parts ADD COLUMN IF NOT EXISTS subtype varchar(255)`;
+      await sql`ALTER TABLE parts ADD COLUMN IF NOT EXISTS subtype varchar(255)`;
     } catch (e) {
-        console.log("Column 'subtype' migration note:", e.message);
+      console.log("Column 'subtype' migration note:", e.message);
     }
 
     try {
-        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS urgency varchar(50) DEFAULT 'normal'`;
+      await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS urgency varchar(50) DEFAULT 'normal'`;
     } catch (e) {
-        console.log("Column 'urgency' migration note:", e.message);
+      console.log("Column 'urgency' migration note:", e.message);
     }
 
     try {
-        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS statusChangedAt varchar(255)`;
+      await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS statusChangedAt varchar(255)`;
     } catch (e) {
-        console.log("Column 'statusChangedAt' migration note:", e.message);
+      console.log("Column 'statusChangedAt' migration note:", e.message);
     }
 
     try {
-        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS isPlanned boolean DEFAULT false`;
+      await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS isPlanned boolean DEFAULT false`;
     } catch (e) {
-        console.log("Column 'isPlanned' migration note:", e.message);
+      console.log("Column 'isPlanned' migration note:", e.message);
     }
 
     try {
-        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS clientPhone varchar(50)`;
+      await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS clientPhone varchar(50)`;
     } catch (e) {
-        console.log("Column 'clientPhone' migration note:", e.message);
+      console.log("Column 'clientPhone' migration note:", e.message);
     }
 
     try {
-        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS estimatedCost decimal(10,2)`;
+      await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS estimatedCost decimal(10,2)`;
     } catch (e) {
-        console.log("Column 'estimatedCost' migration note:", e.message);
+      console.log("Column 'estimatedCost' migration note:", e.message);
     }
 
     try {
-        await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS isArchived boolean DEFAULT false`;
+      await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS isArchived boolean DEFAULT false`;
     } catch (e) {
-        console.log("Column 'isArchived' migration note:", e.message);
+      console.log("Column 'isArchived' migration note:", e.message);
+    }
+
+    try {
+      await sql`ALTER TABLE devices ADD COLUMN IF NOT EXISTS partsCost decimal(10,2) DEFAULT 0`;
+    } catch (e) {
+      console.log("Column 'partsCost' migration note:", e.message);
     }
 
     return response.status(200).json({ message: 'Database tables created/updated successfully' });

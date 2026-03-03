@@ -1,140 +1,193 @@
 <!DOCTYPE html>
 <html lang="ru" class="scroll-smooth">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Домашняя Мастерская</title>
-    <!-- Tailwind подключен через CDN для простоты, но React собирается через Vite -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              workshop: {
-                50: '#f0f9ff',
-                100: '#e0f2fe',
-                500: '#0ea5e9',
-                600: '#0284c7',
-                800: '#075985',
-                900: '#0c4a6e',
-              }
-            },
-            keyframes: {
-                'fade-in': {
-                    '0%': { opacity: '0' },
-                    '100%': { opacity: '1' },
-                },
-                'slide-up': {
-                    '0%': { transform: 'translateY(20px)', opacity: '0' },
-                    '100%': { transform: 'translateY(0)', opacity: '1' },
-                },
-                'slide-down': {
-                    '0%': { maxHeight: '0', opacity: '0' },
-                    '100%': { maxHeight: '1000px', opacity: '1' },
-                },
-                'fade-in-up': {
-                     '0%': { opacity: '0', transform: 'translateY(10px)' },
-                     '100%': { opacity: '1', transform: 'translateY(0)' }
-                }
-            },
-            animation: {
-                'fade-in': 'fade-in 0.3s ease-out',
-                'slide-up': 'slide-up 0.3s ease-out',
-                'slide-down': 'slide-down 0.3s ease-out',
-                'fade-in-up': 'fade-in-up 0.5s ease-out'
-            },
-            spacing: {
-               'safe': 'env(safe-area-inset-bottom)'
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='100%25' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='30' fill='url(%23g)'/%3E%3Cpath d='M40 20a8 8 0 00-7.5 5.2l-12 12a5 5 0 107 7l12-12A8 8 0 0040 20zm0 4a4 4 0 110 8 4 4 0 010-8z' fill='white' opacity='0.95'/%3E%3Cpath d='M22 38l3 3-1.5 1.5-3-3z' fill='white' opacity='0.7'/%3E%3C/svg%3E" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="description"
+    content="Домашняя Мастерская — система управления ремонтами электроники. Учёт заказов, склад запчастей, база знаний и AI-помощник." />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://esm.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://esm.sh https://generativelanguage.googleapis.com https://openrouter.ai https://*.openrouter.ai; frame-src 'none'; object-src 'none'; base-uri 'self';" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <link rel="dns-prefetch" href="https://esm.sh" />
+  <link rel="dns-prefetch" href="https://cdn.tailwindcss.com" />
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://esm.sh" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Домашняя Мастерская</title>
+  <!-- Tailwind подключен через CDN для простоты, но React собирается через Vite -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            workshop: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0ea5e9',
+              600: '#0284c7',
+              800: '#075985',
+              900: '#0c4a6e',
             }
+          },
+          keyframes: {
+            'fade-in': {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+            'slide-up': {
+              '0%': { transform: 'translateY(20px)', opacity: '0' },
+              '100%': { transform: 'translateY(0)', opacity: '1' },
+            },
+            'slide-down': {
+              '0%': { maxHeight: '0', opacity: '0' },
+              '100%': { maxHeight: '1000px', opacity: '1' },
+            },
+            'fade-in-up': {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' }
+            }
+          },
+          animation: {
+            'fade-in': 'fade-in 0.3s ease-out',
+            'slide-up': 'slide-up 0.3s ease-out',
+            'slide-down': 'slide-down 0.3s ease-out',
+            'fade-in-up': 'fade-in-up 0.5s ease-out'
+          },
+          spacing: {
+            'safe': 'env(safe-area-inset-bottom)'
           }
         }
       }
-    </script>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-      body {
-        font-family: 'Inter', sans-serif;
-        -webkit-tap-highlight-color: transparent;
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .pb-safe {
+      padding-bottom: calc(80px + env(safe-area-inset-bottom));
+    }
+
+    .will-change-transform {
+      will-change: transform;
+    }
+
+    /* Плавный переход dark mode */
+    *,
+    *::before,
+    *::after {
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+    }
+
+    /* Кастомный скроллбар */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: #475569;
+    }
+
+    .dark ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+
+    /* Выделение текста */
+    ::selection {
+      background: #3b82f6;
+      color: white;
+    }
+
+    .dark ::selection {
+      background: #60a5fa;
+      color: #0f172a;
+    }
+
+    /* Градиент-текст */
+    .text-gradient {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* No scrollbar (для табов) */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* --- СТИЛИ ПЕЧАТИ --- */
+    @media print {
+
+      /* Скрываем всё по умолчанию */
+      body * {
+        visibility: hidden;
       }
-      .pb-safe {
-        padding-bottom: calc(80px + env(safe-area-inset-bottom));
-      }
-      .will-change-transform {
-        will-change: transform;
-      }
 
-      /* Плавный переход dark mode */
-      *, *::before, *::after {
-        transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+      /* Делаем видимым только контейнер с документом и его содержимое */
+      #printable-root,
+      #printable-root * {
+        visibility: visible;
       }
 
-      /* Кастомный скроллбар */
-      ::-webkit-scrollbar { width: 6px; height: 6px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-      .dark ::-webkit-scrollbar-thumb { background: #475569; }
-      .dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-
-      /* Выделение текста */
-      ::selection { background: #3b82f6; color: white; }
-      .dark ::selection { background: #60a5fa; color: #0f172a; }
-
-      /* Градиент-текст */
-      .text-gradient {
-        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+      /* Позиционируем документ поверх всего */
+      #printable-root {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        min-height: 100vh;
+        height: auto;
+        margin: 0;
+        padding: 0;
+        z-index: 9999;
+        background: white;
       }
 
-      /* No scrollbar (для табов) */
-      .no-scrollbar::-webkit-scrollbar { display: none; }
-      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-      /* --- СТИЛИ ПЕЧАТИ --- */
-      @media print {
-        /* Скрываем всё по умолчанию */
-        body * {
-          visibility: hidden;
-        }
-        
-        /* Делаем видимым только контейнер с документом и его содержимое */
-        #printable-root, #printable-root * {
-          visibility: visible;
-        }
-
-        /* Позиционируем документ поверх всего */
-        #printable-root {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-          min-height: 100vh;
-          height: auto;
-          margin: 0;
-          padding: 0;
-          z-index: 9999;
-          background: white;
-        }
-
-        /* Убираем отступы страницы браузера */
-        @page {
-          margin: 0;
-          size: auto;
-        }
-
-        /* Скрываем элементы интерфейса, если они случайно попали */
-        .no-print {
-          display: none !important;
-        }
+      /* Убираем отступы страницы браузера */
+      @page {
+        margin: 0;
+        size: auto;
       }
-    </style>
+
+      /* Скрываем элементы интерфейса, если они случайно попали */
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -150,8 +203,10 @@
 }
 </script>
 </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
 </html>

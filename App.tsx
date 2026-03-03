@@ -8,24 +8,16 @@ import {
   Trash2,
   Clock,
   ArrowRight,
-  ShoppingCart,
   CheckCircle,
-  Menu,
   X,
   Cloud,
   CloudOff,
-  Database,
   RefreshCw,
   Minus,
-  Tag,
   BookOpen,
-  Calculator,
-  Table,
   Zap,
   Search,
-  Lightbulb,
   ExternalLink,
-  Filter,
   AlertCircle,
   BrainCircuit,
   Flame,
@@ -40,8 +32,6 @@ import {
   Disc,
   Scissors,
   CalendarCheck,
-  BarChart3,
-  ListFilter,
   Pencil,
   Users,
   LayoutList,
@@ -50,7 +40,11 @@ import {
   Archive,
   Sun,
   Moon,
-  Sparkles
+  Sparkles,
+  Trophy,
+  Target,
+  TrendingUp,
+  Percent
 } from 'lucide-react';
 import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
 import { generateWorkshopAdvice, getOpenRouterKey, setOpenRouterKey, beautifyDeviceText } from './services/ai';
@@ -839,15 +833,25 @@ const App: React.FC = () => {
 
   const activeDevices = useMemo(() => devices.filter(d => !d.isArchived), [devices]);
 
-  const stats = useMemo(() => ({
-    total: activeDevices.length,
-    received: activeDevices.filter(d => d.status === DeviceStatus.RECEIVED).length,
-    inProgress: activeDevices.filter(d => d.status === DeviceStatus.IN_PROGRESS).length,
-    waiting: activeDevices.filter(d => d.status === DeviceStatus.WAITING_PARTS).length,
-    ready: activeDevices.filter(d => d.status === DeviceStatus.READY).length,
-    issued: activeDevices.filter(d => d.status === DeviceStatus.ISSUED).length,
-    revenue: activeDevices.filter(d => d.status === DeviceStatus.ISSUED && d.estimatedCost).reduce((sum, d) => sum + (d.estimatedCost || 0), 0)
-  }), [activeDevices]);
+  const stats = useMemo(() => {
+    const issuedDevices = activeDevices.filter(d => d.status === DeviceStatus.ISSUED);
+    const revenue = issuedDevices.filter(d => d.estimatedCost).reduce((sum, d) => sum + (d.estimatedCost || 0), 0);
+    const partsTotal = issuedDevices.reduce((sum, d) => sum + (d.partsCost || 0), 0);
+    const netProfit = revenue - partsTotal;
+    const margin = revenue > 0 ? Math.round((netProfit / revenue) * 100) : 0;
+    return {
+      total: activeDevices.length,
+      received: activeDevices.filter(d => d.status === DeviceStatus.RECEIVED).length,
+      inProgress: activeDevices.filter(d => d.status === DeviceStatus.IN_PROGRESS).length,
+      waiting: activeDevices.filter(d => d.status === DeviceStatus.WAITING_PARTS).length,
+      ready: activeDevices.filter(d => d.status === DeviceStatus.READY).length,
+      issued: issuedDevices.length,
+      revenue,
+      partsTotal,
+      netProfit,
+      margin
+    };
+  }, [activeDevices]);
 
   const getDaysInShop = (dateStr: string) => {
     const start = new Date(dateStr);
@@ -899,6 +903,7 @@ const App: React.FC = () => {
         status: DeviceStatus.RECEIVED,
         urgency: newDevice.urgency || Urgency.NORMAL,
         estimatedCost: newDevice.estimatedCost,
+        partsCost: newDevice.partsCost,
         notes: newDevice.notes || '',
         statusChangedAt: new Date().toISOString()
       };
@@ -921,6 +926,7 @@ const App: React.FC = () => {
       status: device.status,
       urgency: device.urgency,
       estimatedCost: device.estimatedCost,
+      partsCost: device.partsCost,
       notes: device.notes
     });
     setShowAddDeviceModal(true);
@@ -1147,6 +1153,7 @@ const App: React.FC = () => {
             <option value={Urgency.CRITICAL}>Срочно!</option>
           </select>
           {device.estimatedCost ? <span className="text-xs font-bold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded">{device.estimatedCost.toLocaleString('ru-RU')} ₽</span> : null}
+          {device.partsCost ? <span className="text-xs font-bold bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded">ЗИП: {device.partsCost.toLocaleString('ru-RU')} ₽</span> : null}
         </div>
         <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-2 md:p-3 rounded-md text-sm border border-red-100 dark:border-red-900/30 mb-2">{device.issueDescription}</div>
         {/* Inline notes */}
@@ -1237,14 +1244,35 @@ const App: React.FC = () => {
     return (
       <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in transform-gpu">
         {/* Статистика */}
-        <div className="grid grid-cols-3 md:grid-cols-7 gap-2 mb-6 text-center">
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-2 mb-3 text-center">
           <div className="bg-white dark:bg-slate-800 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-slate-500 uppercase font-bold">Всего</div><div className="text-xl font-bold text-slate-800 dark:text-slate-100">{stats.total}</div></div>
           <div className="bg-blue-50 dark:bg-blue-900/30 p-2 rounded-lg border border-blue-100 dark:border-blue-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-blue-500 uppercase font-bold">Принято</div><div className="text-xl font-bold text-blue-700 dark:text-blue-300">{stats.received}</div></div>
           <div className="bg-yellow-50 dark:bg-yellow-900/30 p-2 rounded-lg border border-yellow-100 dark:border-yellow-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-yellow-600 uppercase font-bold">В работе</div><div className="text-xl font-bold text-yellow-800 dark:text-yellow-300">{stats.inProgress}</div></div>
           <div className="bg-orange-50 dark:bg-orange-900/30 p-2 rounded-lg border border-orange-100 dark:border-orange-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-orange-600 uppercase font-bold">Ждут ЗИП</div><div className="text-xl font-bold text-orange-800 dark:text-orange-300">{stats.waiting}</div></div>
           <div className="bg-green-50 dark:bg-green-900/30 p-2 rounded-lg border border-green-100 dark:border-green-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-green-600 uppercase font-bold">Готовы</div><div className="text-xl font-bold text-green-800 dark:text-green-300">{stats.ready}</div></div>
-          <div className="bg-gray-100 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700 opacity-70 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-gray-500 uppercase font-bold">Выдано</div><div className="text-xl font-bold text-gray-700 dark:text-gray-300">{stats.issued}</div></div>
-          <div className="bg-emerald-50 dark:bg-emerald-900/30 p-2 rounded-lg border border-emerald-100 dark:border-emerald-800 transition-transform hover:-translate-y-0.5 will-change-transform"><div className="text-xs text-emerald-600 uppercase font-bold">Выручка</div><div className="text-lg font-bold text-emerald-800 dark:text-emerald-300">{stats.revenue.toLocaleString('ru-RU')} ₽</div></div>
+        </div>
+        {/* Финансовая статистика */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6 text-center">
+          <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-lg border border-emerald-100 dark:border-emerald-800 transition-transform hover:-translate-y-0.5 will-change-transform">
+            <div className="text-xs text-emerald-600 uppercase font-bold flex items-center justify-center gap-1"><TrendingUp className="w-3 h-3" />Выручка</div>
+            <div className="text-lg font-bold text-emerald-800 dark:text-emerald-300">{stats.revenue.toLocaleString('ru-RU')} ₽</div>
+            <div className="text-[10px] text-emerald-500">работа + запчасти</div>
+          </div>
+          <div className="bg-green-50 dark:bg-green-900/30 p-3 rounded-lg border border-green-100 dark:border-green-800 transition-transform hover:-translate-y-0.5 will-change-transform">
+            <div className="text-xs text-green-600 uppercase font-bold flex items-center justify-center gap-1"><Trophy className="w-3 h-3" />Чистая прибыль</div>
+            <div className="text-lg font-bold text-green-800 dark:text-green-300">{stats.netProfit.toLocaleString('ru-RU')} ₽</div>
+            <div className="text-[10px] text-green-500">за вычетом запчастей</div>
+          </div>
+          <div className="bg-orange-50 dark:bg-orange-900/30 p-3 rounded-lg border border-orange-100 dark:border-orange-800 transition-transform hover:-translate-y-0.5 will-change-transform">
+            <div className="text-xs text-orange-600 uppercase font-bold flex items-center justify-center gap-1"><Package className="w-3 h-3" />Запчасти</div>
+            <div className="text-lg font-bold text-orange-800 dark:text-orange-300">{stats.partsTotal.toLocaleString('ru-RU')} ₽</div>
+            <div className="text-[10px] text-orange-500">расходы на ЗИП</div>
+          </div>
+          <div className="bg-indigo-50 dark:bg-indigo-900/30 p-3 rounded-lg border border-indigo-100 dark:border-indigo-800 transition-transform hover:-translate-y-0.5 will-change-transform">
+            <div className="text-xs text-indigo-600 uppercase font-bold flex items-center justify-center gap-1"><Percent className="w-3 h-3" />Маржа</div>
+            <div className="text-lg font-bold text-indigo-800 dark:text-indigo-300">{stats.margin}%</div>
+            <div className="text-[10px] text-indigo-500">прибыль / выручка</div>
+          </div>
         </div>
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -1432,15 +1460,128 @@ const App: React.FC = () => {
       <main className="flex-1 md:ml-64 relative min-h-screen">
         {view === 'repair' && renderRepairView()}
         {view === 'inventory' && renderInventoryView()}
-        {view === 'planning' && (
-          <div className="p-4 md:p-8 max-w-6xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><CalendarCheck className="w-6 h-6 text-green-600" /> План работ</h2>
-            <div className="grid gap-4">
-              {devices.filter(d => d.isPlanned && !d.isArchived).map(device => renderDeviceCard(device))}
-              {devices.filter(d => d.isPlanned && !d.isArchived).length === 0 && <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-500">Нет запланированных устройств. Отметьте устройства флажком в списке ремонта.</div>}
+        {view === 'planning' && (() => {
+          const plannedDevices = devices.filter(d => d.isPlanned && !d.isArchived);
+          const completedToday = devices.filter(d => {
+            if (!d.statusChangedAt || d.status !== DeviceStatus.ISSUED) return false;
+            const changed = new Date(d.statusChangedAt);
+            const now = new Date();
+            return changed.toDateString() === now.toDateString();
+          }).length;
+          const totalPlanned = plannedDevices.length;
+          const donePlanned = plannedDevices.filter(d => d.status === DeviceStatus.ISSUED || d.status === DeviceStatus.READY).length;
+          const progress = totalPlanned > 0 ? Math.round((donePlanned / totalPlanned) * 100) : 0;
+
+          // Streak calculation
+          let streak = 0;
+          const today = new Date();
+          for (let i = 0; i < 365; i++) {
+            const checkDate = new Date(today);
+            checkDate.setDate(today.getDate() - i);
+            const hasCompletion = devices.some(d => {
+              if (!d.statusChangedAt || d.status !== DeviceStatus.ISSUED) return false;
+              return new Date(d.statusChangedAt).toDateString() === checkDate.toDateString();
+            });
+            if (hasCompletion) streak++;
+            else if (i > 0) break;
+          }
+
+          const motivationalMessages = [
+            { min: 0, msg: '☕ Начни с простого — первый ремонт задаёт ритм всему дню!', emoji: '🌅' },
+            { min: 1, msg: '🔧 Отличное начало! Один сделано, теперь они полетят!', emoji: '🚀' },
+            { min: 2, msg: '⚡ Два ремонта — ты разогрелся! Не останавливайся!', emoji: '💪' },
+            { min: 3, msg: '🔥 Ты на огне! Три ремонта сегодня — это машина!', emoji: '🏆' },
+            { min: 5, msg: '🏅 Легенда! 5+ ремонтов в день — клиенты в восторге!', emoji: '👑' },
+          ];
+          const motivation = [...motivationalMessages].reverse().find(m => completedToday >= m.min) || motivationalMessages[0];
+
+          const timeOfDay = new Date().getHours();
+          const greeting = timeOfDay < 12 ? 'Доброе утро!' : timeOfDay < 17 ? 'Продуктивного дня!' : 'Вечерний рывок!';
+
+          return (
+            <div className="p-4 md:p-8 max-w-6xl mx-auto pb-24 md:pb-8 animate-fade-in">
+              {/* Мотивационный баннер */}
+              <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 rounded-2xl p-6 mb-6 text-white overflow-hidden shadow-xl">
+                <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -translate-y-12 translate-x-12"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-8 -translate-x-8"></div>
+                <div className="relative z-10">
+                  <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-white/80 mb-1">{new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+                      <h2 className="text-2xl md:text-3xl font-bold mb-2">{greeting} {motivation.emoji}</h2>
+                      <p className="text-white/90 text-sm md:text-base">{motivation.msg}</p>
+                    </div>
+                    <div className="flex gap-3">
+                      {/* Streak */}
+                      <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3 text-center min-w-[80px]">
+                        <Flame className="w-6 h-6 mx-auto mb-1 text-orange-300" />
+                        <div className="text-2xl font-bold">{streak}</div>
+                        <div className="text-[10px] text-white/70 font-medium">дн. подряд</div>
+                      </div>
+                      {/* Today's count */}
+                      <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3 text-center min-w-[80px]">
+                        <Trophy className="w-6 h-6 mx-auto mb-1 text-yellow-300" />
+                        <div className="text-2xl font-bold">{completedToday}</div>
+                        <div className="text-[10px] text-white/70 font-medium">сегодня</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Progress bar */}
+                  {totalPlanned > 0 && (
+                    <div className="mt-4">
+                      <div className="flex justify-between text-xs text-white/80 mb-1">
+                        <span className="flex items-center gap-1"><Target className="w-3 h-3" /> Прогресс плана</span>
+                        <span className="font-bold">{donePlanned}/{totalPlanned} ({progress}%)</span>
+                      </div>
+                      <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-700 ease-out"
+                          style={{
+                            width: `${progress}%`,
+                            background: progress === 100
+                              ? 'linear-gradient(90deg, #34d399, #10b981)'
+                              : 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                          }}
+                        />
+                      </div>
+                      {progress === 100 && (
+                        <div className="text-center mt-2 text-sm font-bold animate-bounce">🎉 ВСЕ ВЫПОЛНЕНО! Ты мастер! 🎉</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Заголовок секции */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <CalendarCheck className="w-5 h-5 text-green-600" /> Задачи на день
+                  {totalPlanned > 0 && <span className="text-sm font-normal text-slate-400">({totalPlanned})</span>}
+                </h2>
+              </div>
+
+              {/* Список устройств */}
+              <div className="grid gap-4">
+                {plannedDevices.length > 0 ? (
+                  plannedDevices.map(device => (
+                    <div key={device.id} className="relative">
+                      {(device.status === DeviceStatus.ISSUED || device.status === DeviceStatus.READY) && (
+                        <div className="absolute inset-0 bg-green-500/5 dark:bg-green-500/10 rounded-xl z-0 pointer-events-none border-2 border-green-200 dark:border-green-800"></div>
+                      )}
+                      {renderDeviceCard(device)}
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                    <CalendarCheck className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                    <p className="text-slate-500 text-lg mb-2">Нет запланированных задач</p>
+                    <p className="text-slate-400 text-sm">Нажмите <CalendarCheck className="w-4 h-4 inline text-green-500" /> на карточке устройства в списке «В ремонте» чтобы добавить в план.</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         {view === 'print' && <Printables devices={devices} />}
         {view === 'ai_chat' && (
           <div className="flex flex-col h-[calc(100vh-80px)] md:h-screen p-4 max-w-3xl mx-auto pt-4 md:pt-8">
@@ -1689,15 +1830,37 @@ const App: React.FC = () => {
             </h2>
 
             {/* Revenue Summary */}
-            <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 mb-6">
-              <div className="text-sm text-emerald-600 font-bold uppercase">Общая выручка (архив)</div>
-              <div className="text-3xl font-bold text-emerald-800 dark:text-emerald-300">
-                {devices.filter(d => d.isArchived && d.estimatedCost).reduce((sum, d) => sum + (d.estimatedCost || 0), 0).toLocaleString('ru-RU')} ₽
-              </div>
-              <div className="text-xs text-emerald-500 mt-1">
-                Всего завершено: {devices.filter(d => d.isArchived).length} ремонтов
-              </div>
-            </div>
+            {(() => {
+              const archived = devices.filter(d => d.isArchived);
+              const archiveRevenue = archived.filter(d => d.estimatedCost).reduce((sum, d) => sum + (d.estimatedCost || 0), 0);
+              const archiveParts = archived.reduce((sum, d) => sum + (d.partsCost || 0), 0);
+              const archiveNet = archiveRevenue - archiveParts;
+              const archiveMargin = archiveRevenue > 0 ? Math.round((archiveNet / archiveRevenue) * 100) : 0;
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                  <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                    <div className="text-xs text-emerald-600 font-bold uppercase flex items-center gap-1"><TrendingUp className="w-3 h-3" />Выручка</div>
+                    <div className="text-2xl font-bold text-emerald-800 dark:text-emerald-300">{archiveRevenue.toLocaleString('ru-RU')} ₽</div>
+                    <div className="text-xs text-emerald-500">за {archived.length} ремонтов</div>
+                  </div>
+                  <div className="bg-green-50 dark:bg-green-900/30 p-4 rounded-xl border border-green-200 dark:border-green-800">
+                    <div className="text-xs text-green-600 font-bold uppercase flex items-center gap-1"><Trophy className="w-3 h-3" />Чистая прибыль</div>
+                    <div className="text-2xl font-bold text-green-800 dark:text-green-300">{archiveNet.toLocaleString('ru-RU')} ₽</div>
+                    <div className="text-xs text-green-500">за вычетом ЗИП</div>
+                  </div>
+                  <div className="bg-orange-50 dark:bg-orange-900/30 p-4 rounded-xl border border-orange-200 dark:border-orange-800">
+                    <div className="text-xs text-orange-600 font-bold uppercase flex items-center gap-1"><Package className="w-3 h-3" />Запчасти</div>
+                    <div className="text-2xl font-bold text-orange-800 dark:text-orange-300">{archiveParts.toLocaleString('ru-RU')} ₽</div>
+                    <div className="text-xs text-orange-500">расходы</div>
+                  </div>
+                  <div className="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                    <div className="text-xs text-indigo-600 font-bold uppercase flex items-center gap-1"><Percent className="w-3 h-3" />Маржа</div>
+                    <div className="text-2xl font-bold text-indigo-800 dark:text-indigo-300">{archiveMargin}%</div>
+                    <div className="text-xs text-indigo-500">рентабельность</div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Archived Devices */}
             <div className="space-y-3">
@@ -1723,6 +1886,9 @@ const App: React.FC = () => {
                     </div>
                     {device.estimatedCost ? (
                       <div className="text-sm font-bold text-emerald-600 mt-1">{device.estimatedCost.toLocaleString('ru-RU')} ₽</div>
+                    ) : null}
+                    {device.partsCost ? (
+                      <div className="text-xs text-orange-500">ЗИП: {device.partsCost.toLocaleString('ru-RU')} ₽</div>
                     ) : null}
                   </div>
                 </div>
@@ -1774,9 +1940,15 @@ const App: React.FC = () => {
                     </select>
                   </div>
                 )}
-                <div>
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Стоимость ремонта (₽)</label>
-                  <input type="number" min="0" step="100" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.estimatedCost || ''} onChange={e => setNewDevice({ ...newDevice, estimatedCost: e.target.value ? parseFloat(e.target.value) : undefined })} placeholder="0" />
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Стоимость ремонта (₽)</label>
+                    <input type="number" min="0" step="100" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.estimatedCost || ''} onChange={e => setNewDevice({ ...newDevice, estimatedCost: e.target.value ? parseFloat(e.target.value) : undefined })} placeholder="0" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Стоимость запчастей (₽)</label>
+                    <input type="number" min="0" step="50" className="w-full p-3 border border-orange-300 dark:border-orange-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all" value={newDevice.partsCost || ''} onChange={e => setNewDevice({ ...newDevice, partsCost: e.target.value ? parseFloat(e.target.value) : undefined })} placeholder="0" />
+                  </div>
                 </div>
                 <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Поломка</label><textarea className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none h-20 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.issueDescription || ''} onChange={e => setNewDevice({ ...newDevice, issueDescription: e.target.value })} /></div>
                 <div><label className="text-sm font-medium text-slate-700 dark:text-slate-300">Заметки мастера</label><textarea className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg outline-none h-16 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={newDevice.notes || ''} onChange={e => setNewDevice({ ...newDevice, notes: e.target.value })} placeholder="Заметки по ремонту..." /></div>
