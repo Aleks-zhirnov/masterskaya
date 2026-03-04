@@ -44,9 +44,14 @@ import {
   Trophy,
   Target,
   TrendingUp,
-  Percent
+  Percent,
+  ListPlus,
+  CircleCheck,
+  XCircle,
+  PlusCircle,
+  Timer
 } from 'lucide-react';
-import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency } from './types';
+import { Device, DeviceStatus, PartType, SparePart, ViewState, ChatMessage, Urgency, PlanTask } from './types';
 import { generateWorkshopAdvice, getOpenRouterKey, setOpenRouterKey, beautifyDeviceText, estimateRepairPrice } from './services/ai';
 import { Printables } from './components/Printables';
 
@@ -97,6 +102,10 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Сообщение "Фильтр забит" (на чистом)',
         solution: 'В фильтре стоит магнит, в корпусе - датчик Холла. Если фильтр неоригинал без магнита - будет ошибка. Либо датчик забился пылью.'
+      },
+      {
+        problem: 'Быстро разряжается (работает 15-20 минут)',
+        solution: 'Деградация Li-Ion банок (ёмкость менее 50%). Заменить аккумулятор на оригинал или аналог 14.4В/5200mAh. Проверить также щётки — если забиты, мотор потребляет больше тока.'
       }
     ]
   },
@@ -124,6 +133,10 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Не качает воздух (Подушки)',
         solution: '1. Слетел шланг с компрессора. 2. Порвалась мембрана компрессора. 3. Не открывается электромагнитный клапан распределителя (залип).'
+      },
+      {
+        problem: 'Перегрев / Отключается через 5 минут',
+        solution: 'Сработала термозащита мотора. Забит вентиляционный канал пылью. Прочистить воздуховоды, проверить термореле. Если массажёр ручной — возможен износ щёток коллекторного двигателя.'
       }
     ]
   },
@@ -174,6 +187,14 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Трехходовой клапан не переключает',
         solution: 'Попала вода в моторчик привода (протекает сальник) -> КЗ мотора -> сгорел симистор управления на плате.'
+      },
+      {
+        problem: 'Ошибка E10 — Низкое давление (Low Water Pressure)',
+        solution: 'Давление ниже 0.5 бар. 1. Подпитать систему через кран подпитки. 2. Проверить расширительный бак (подкачать до 0.8 бар). 3. Течь в системе отопления или неисправен датчик давления.'
+      },
+      {
+        problem: 'Вентилятор шумит / Вибрация при работе',
+        solution: 'Разбалансировка крыльчатки вентилятора (нагар/грязь). Снять, промыть, проверить подшипник. При сильном износе — замена. Также проверить вытяжку (дымоход) на засор.'
       }
     ]
   },
@@ -197,6 +218,14 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Постоянно щелкает (AVR)',
         solution: 'Подгорели контакты реле переключения обмоток. ИБП не может стабилизировать напряжение.'
+      },
+      {
+        problem: 'Писк без нагрузки / Непрерывный зуммер',
+        solution: 'ИБП считает батарею дохлой. Проверить напряжение АКБ (должно быть >12.4В). Если батарея новая — калибровка: разрядить до отключения, зарядить 8 часов. Может быть неисправен датчик тока.'
+      },
+      {
+        problem: 'Батарея быстро садится (была замена)',
+        solution: 'Установлена батарея меньшей ёмкости. Проверить что Ah совпадает с оригиналом. Также проверить — нет ли утечки тока на плате (микроамперметром).'
       }
     ]
   },
@@ -220,6 +249,14 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Не видит воду (Красная лампа)',
         solution: 'Залип поплавок (геркон) или размагнитился магнит в поплавке. Почистить от слизи.'
+      },
+      {
+        problem: 'Запах плесени из увлажнителя',
+        solution: 'Биоплёнка и грибок в баке. Промыть раствором лимонной кислоты (2 ст.л. на литр) или белым уксусом. Заменить фильтр если есть. Менять воду каждый день!'
+      },
+      {
+        problem: 'Индикатор мигает красным / Не запускается',
+        solution: 'Датчик уровня воды залит накипью. Почистить уксусом. Проверить контакт мембраны (пьезоэлемента) — налёт мешает вибрации.'
       }
     ]
   },
@@ -243,6 +280,14 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Убегает молоко / Перегревает',
         solution: 'Грязный нижний термодатчик (грибок по центру). Попала еда, плохой прижим к чаше.'
+      },
+      {
+        problem: 'Крышка не блокируется / Не закрывается',
+        solution: 'Защёлка крышки сломана или ослабла пружина. Также микровыключатель блокировки крышки мог выйти из строя — мультиварка не включится без замкнутого микрика.'
+      },
+      {
+        problem: 'Таймер сбивается / Отключается посреди программы',
+        solution: 'Скачки напряжения в сети. Использовать стабилизатор. Проверить электролиты на плате управления (вздутие). Также проверить контакт разъёма между платой и дисплеем.'
       }
     ]
   },
@@ -262,6 +307,14 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Вздулся аккумулятор',
         solution: 'Газообразование в Li-Po пакете. ОПАСНО! Проткнешь - пожар. Только утилизация и замена.'
+      },
+      {
+        problem: 'Не определяется через USB / Компьютер не видит',
+        solution: 'Сломан USB-контроллер или оторвана дорожка D+/D−. Разобрать, проверить пайку разъёма. Если Type-C — проверить резисторы CC (5.1kΩ на GND).'
+      },
+      {
+        problem: 'Кнопка не реагирует / Индикатор не горит',
+        solution: 'Отвал кнопки от платы (тактовая кнопка 6×6). Заменить. Также проверить LED индикатор — мог выгореть или оторваться.'
       }
     ]
   },
@@ -285,6 +338,14 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Запах гари / Искры',
         solution: 'Межвитковое замыкание ротора (коллекторный мотор) или зависли щетки.'
+      },
+      {
+        problem: 'Сильная вибрация при работе',
+        solution: 'Погнут нож после удара о камень. Снять нож, проверить на ровной поверхности. Выправить или заменить. Также проверить крепёжный болт — если ослаб, нож бьёт.'
+      },
+      {
+        problem: 'Тупой нож — рвёт траву',
+        solution: 'Заточить напильником / болгаркой, соблюдая угол 30°. При глубоких сколах — заменить нож. Тупой нож перегружает мотор и сокращает ресурс.'
       }
     ]
   },
@@ -308,6 +369,14 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Вкус пластика',
         solution: 'Дешевые силиконовые трубки или перегрев пластикового бака.'
+      },
+      {
+        problem: 'Шум компрессора / Громкий гул',
+        solution: 'Компрессорное охлаждение: вибрация корпуса компрессора. Подложить резиновые прокладки. Проверить уровень хладагента. При утечке — заправить R134a.'
+      },
+      {
+        problem: 'Не наливает воду / Слабый напор',
+        solution: 'Засор в системе подачи. Прокачать шприцем. Проверить помпу (если есть). Накипь в трубках — промыть лимонной кислотой.'
       }
     ]
   },
@@ -331,6 +400,14 @@ const KNOWLEDGE_BASE = [
       {
         problem: 'Кнопки памяти не работают',
         solution: 'Залитие кнопок кофе/колой. Окисление платы кнопок.'
+      },
+      {
+        problem: 'Ошибка по CAN-шине / Нет связи с блоком',
+        solution: 'Пробит CAN-трансивер (TJA1040/1050). Часто из-за замыкания в проводке. Заменить трансивер, проверить терминирующий резистор 120Ω на конце шины.'
+      },
+      {
+        problem: 'Постоянный щелчок реле',
+        solution: 'Залипание или подгорание контактов реле мотора. Заменить реле. Проверить также обмотку мотора на КЗ — если мотор коротит, новое реле тоже сгорит.'
       }
     ]
   }
@@ -573,6 +650,22 @@ const App: React.FC = () => {
   // UI State - Knowledge Base
   const [expandedKnowledge, setExpandedKnowledge] = useState<string | null>(null);
 
+  // Plan Tasks State
+  const [planTasks, setPlanTasks] = useState<PlanTask[]>(() => {
+    try { const saved = localStorage.getItem('workshop_planTasks'); return saved ? JSON.parse(saved) : []; } catch { return []; }
+  });
+  const [showAddToPlanModal, setShowAddToPlanModal] = useState(false);
+  const [newPlanTaskTitle, setNewPlanTaskTitle] = useState('');
+
+  // Custom Defects State
+  const [customDefects, setCustomDefects] = useState<Array<{ id: string, categoryTitle: string, problem: string, solution: string }>>(() => {
+    try { const saved = localStorage.getItem('workshop_customDefects'); return saved ? JSON.parse(saved) : []; } catch { return []; }
+  });
+  const [showAddDefectModal, setShowAddDefectModal] = useState(false);
+  const [newDefectCategory, setNewDefectCategory] = useState('');
+  const [newDefectProblem, setNewDefectProblem] = useState('');
+  const [newDefectSolution, setNewDefectSolution] = useState('');
+
   // Parts Form State
   const [newPartName, setNewPartName] = useState('');
   const [newPartType, setNewPartType] = useState<PartType>(PartType.OTHER);
@@ -660,24 +753,46 @@ const App: React.FC = () => {
   const archiveOldDevices = async (loadedDevices: Device[], mode: 'local' | 'cloud') => {
     const now = new Date();
     const idsToArchive: string[] = [];
+    const idsToDelete: string[] = [];
 
     loadedDevices.forEach(d => {
+      // Автоархивация: 3 дня после статуса "Выдан"
       if (d.status === DeviceStatus.ISSUED && d.statusChangedAt && !d.isArchived) {
         const changedAt = new Date(d.statusChangedAt);
         const diffTime = Math.abs(now.getTime() - changedAt.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-        if (diffDays > 4) {
+        if (diffDays >= 3) {
           idsToArchive.push(d.id);
+        }
+      }
+
+      // Автоудаление из архива: 30 дней после архивации
+      if (d.isArchived && d.archivedAt) {
+        const archivedAt = new Date(d.archivedAt);
+        const diffTime = Math.abs(now.getTime() - archivedAt.getTime());
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        if (diffDays >= 30) {
+          idsToDelete.push(d.id);
         }
       }
     });
 
+    let updated = loadedDevices;
+
     if (idsToArchive.length > 0) {
       console.log("Auto-archiving old issued devices:", idsToArchive);
-      const updated = loadedDevices.map(d =>
-        idsToArchive.includes(d.id) ? { ...d, isArchived: true } : d
+      updated = updated.map(d =>
+        idsToArchive.includes(d.id) ? { ...d, isArchived: true, archivedAt: new Date().toISOString() } : d
       );
+    }
+
+    if (idsToDelete.length > 0) {
+      console.log("Auto-deleting archived devices older than 30 days:", idsToDelete);
+      updated = updated.filter(d => !idsToDelete.includes(d.id));
+    }
+
+    if (idsToArchive.length > 0 || idsToDelete.length > 0) {
       setDevices(updated);
 
       if (mode === 'local') {
@@ -686,6 +801,9 @@ const App: React.FC = () => {
         for (const id of idsToArchive) {
           const device = updated.find(d => d.id === id);
           if (device) await api.saveDevice(device);
+        }
+        for (const id of idsToDelete) {
+          await api.deleteDevice(id);
         }
       }
     }
@@ -858,7 +976,7 @@ const App: React.FC = () => {
     const start = new Date(dateStr);
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - start.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
   };
 
   const handleEstimatePrice = async (e: React.MouseEvent) => {
@@ -973,6 +1091,61 @@ const App: React.FC = () => {
   const toggleDevicePlan = (id: string) => {
     const updatedDevices = devices.map(d => d.id === id ? { ...d, isPlanned: !d.isPlanned } : d);
     persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
+  };
+
+  const completeDeviceFromPlan = (id: string) => {
+    const updatedDevices = devices.map(d => {
+      if (d.id === id) {
+        return { ...d, status: DeviceStatus.READY, statusChangedAt: new Date().toISOString() };
+      }
+      return d;
+    });
+    persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
+  };
+
+  const removeFromPlan = (id: string) => {
+    const updatedDevices = devices.map(d => d.id === id ? { ...d, isPlanned: false } : d);
+    persistDevice(updatedDevices, updatedDevices.find(d => d.id === id));
+  };
+
+  // Plan Tasks (custom tasks)
+  const addPlanTask = () => {
+    if (!newPlanTaskTitle.trim()) return;
+    const task: PlanTask = { id: Date.now().toString(), title: newPlanTaskTitle.trim(), completed: false, createdAt: new Date().toISOString() };
+    const updated = [...planTasks, task];
+    setPlanTasks(updated);
+    localStorage.setItem('workshop_planTasks', JSON.stringify(updated));
+    setNewPlanTaskTitle('');
+  };
+
+  const togglePlanTask = (id: string) => {
+    const updated = planTasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+    setPlanTasks(updated);
+    localStorage.setItem('workshop_planTasks', JSON.stringify(updated));
+  };
+
+  const deletePlanTask = (id: string) => {
+    const updated = planTasks.filter(t => t.id !== id);
+    setPlanTasks(updated);
+    localStorage.setItem('workshop_planTasks', JSON.stringify(updated));
+  };
+
+  // Custom Defects
+  const addCustomDefect = () => {
+    if (!newDefectCategory.trim() || !newDefectProblem.trim() || !newDefectSolution.trim()) return;
+    const defect = { id: Date.now().toString(), categoryTitle: newDefectCategory.trim(), problem: newDefectProblem.trim(), solution: newDefectSolution.trim() };
+    const updated = [...customDefects, defect];
+    setCustomDefects(updated);
+    localStorage.setItem('workshop_customDefects', JSON.stringify(updated));
+    setNewDefectProblem('');
+    setNewDefectSolution('');
+    setShowAddDefectModal(false);
+  };
+
+  const deleteCustomDefect = (id: string) => {
+    const updated = customDefects.filter(d => d.id !== id);
+    setCustomDefects(updated);
+    localStorage.setItem('workshop_customDefects', JSON.stringify(updated));
   };
 
   const deleteDevice = (id: string) => {
@@ -1201,8 +1374,12 @@ const App: React.FC = () => {
           <select value={device.status} onChange={(e) => updateDeviceStatus(device.id, e.target.value as DeviceStatus)} className={`w-full p-2 rounded border font-medium text-sm focus:outline-none transition-colors cursor-pointer ${device.status === DeviceStatus.READY ? 'bg-green-100 text-green-800 border-green-200' : device.status === DeviceStatus.ISSUED ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
             {Object.values(DeviceStatus).map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          {device.status === DeviceStatus.ISSUED && (
-            <div className="text-[10px] text-center text-slate-400 mt-1">В архив через 4 дня</div>
+          {device.status === DeviceStatus.ISSUED && device.statusChangedAt && (
+            (() => {
+              const daysElapsed = getDaysInShop(device.statusChangedAt);
+              const daysLeft = Math.max(0, 3 - daysElapsed);
+              return <div className="text-[10px] text-center text-slate-400 mt-1 flex items-center justify-center gap-1"><Timer className="w-3 h-3" />{daysLeft > 0 ? `В архив через ${daysLeft} дн.` : 'Скоро в архив'}</div>;
+            })()
           )}
         </div>
         <div className="flex gap-2">
@@ -1583,8 +1760,70 @@ const App: React.FC = () => {
                 </h2>
               </div>
 
-              {/* Список устройств */}
+              {/* Кнопка добавления */}
+              <div className="flex gap-2 mb-4">
+                <button onClick={() => setShowAddToPlanModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"><ListPlus className="w-4 h-4" /> Добавить задачу</button>
+              </div>
+
+              {/* Модалка добавления */}
+              {showAddToPlanModal && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-lg animate-fade-in" onClick={(e: any) => { if (e.target === e.currentTarget) setShowAddToPlanModal(false); }}>
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up max-h-[80vh] overflow-y-auto p-6">
+                    <h3 className="text-lg font-bold mb-4 text-slate-800 dark:text-slate-100">Добавить задачу в план</h3>
+
+                    {/* Из ремонта */}
+                    {devices.filter(d => !d.isArchived && !d.isPlanned && d.status !== DeviceStatus.ISSUED).length > 0 && (
+                      <div className="mb-4">
+                        <div className="text-sm font-bold text-slate-500 mb-2">Из списка ремонтов:</div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {devices.filter(d => !d.isArchived && !d.isPlanned && d.status !== DeviceStatus.ISSUED).map(d => (
+                            <button key={d.id} onClick={() => { toggleDevicePlan(d.id); setShowAddToPlanModal(false); }} className="w-full text-left p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors text-sm flex items-center gap-2">
+                              <PlusCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                              <span className="text-slate-800 dark:text-slate-200 font-medium">{d.deviceModel}</span>
+                              <span className="text-slate-400 text-xs">— {d.clientName}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Новая задача */}
+                    <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                      <div className="text-sm font-bold text-slate-500 mb-2">Или создать свою задачу:</div>
+                      <div className="flex gap-2">
+                        <input type="text" value={newPlanTaskTitle} onChange={(e: any) => setNewPlanTaskTitle(e.target.value)} onKeyDown={(e: any) => e.key === 'Enter' && addPlanTask()} placeholder="Напр: уборка, разработка сайта..." className="flex-1 p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg text-sm" />
+                        <button onClick={() => { addPlanTask(); setShowAddToPlanModal(false); }} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">Добавить</button>
+                      </div>
+                    </div>
+
+                    <button onClick={() => setShowAddToPlanModal(false)} className="w-full mt-4 p-2 text-sm text-slate-500 hover:text-slate-700 transition-colors">Закрыть</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Кастомные задачи */}
+              {planTasks.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">Мои задачи</h3>
+                  <div className="space-y-2">
+                    {planTasks.map(task => (
+                      <div key={task.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${task.completed ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+                        <button onClick={() => togglePlanTask(task.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${task.completed ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300 dark:border-slate-600 hover:border-green-400'}`}>
+                          {task.completed && <CircleCheck className="w-4 h-4" />}
+                        </button>
+                        <span className={`flex-1 text-sm ${task.completed ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'}`}>{task.title}</span>
+                        <button onClick={() => deletePlanTask(task.id)} className="text-slate-400 hover:text-red-500 transition-colors"><XCircle className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Устройства в плане */}
               <div className="grid gap-4">
+                {plannedDevices.length > 0 && (
+                  <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Устройства на сегодня</h3>
+                )}
                 {plannedDevices.length > 0 ? (
                   plannedDevices.map(device => (
                     <div key={device.id} className="relative">
@@ -1592,15 +1831,21 @@ const App: React.FC = () => {
                         <div className="absolute inset-0 bg-green-500/5 dark:bg-green-500/10 rounded-xl z-0 pointer-events-none border-2 border-green-200 dark:border-green-800"></div>
                       )}
                       {renderDeviceCard(device)}
+                      <div className="flex gap-2 mt-1 pl-2">
+                        {device.status !== DeviceStatus.READY && device.status !== DeviceStatus.ISSUED && (
+                          <button onClick={() => completeDeviceFromPlan(device.id)} className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800 font-medium transition-colors"><CircleCheck className="w-3.5 h-3.5" /> Выполнил</button>
+                        )}
+                        <button onClick={() => removeFromPlan(device.id)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-500 font-medium transition-colors"><XCircle className="w-3.5 h-3.5" /> Убрать</button>
+                      </div>
                     </div>
                   ))
-                ) : (
+                ) : planTasks.length === 0 ? (
                   <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
                     <CalendarCheck className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
                     <p className="text-slate-500 text-lg mb-2">Нет запланированных задач</p>
-                    <p className="text-slate-400 text-sm">Нажмите <CalendarCheck className="w-4 h-4 inline text-green-500" /> на карточке устройства в списке «В ремонте» чтобы добавить в план.</p>
+                    <p className="text-slate-400 text-sm">Нажмите «Добавить задачу» чтобы добавить устройство или свою задачу.</p>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           );
@@ -1816,33 +2061,113 @@ const App: React.FC = () => {
         )}
         {view === 'knowledge' && (
           <div className="p-4 md:p-8 max-w-4xl mx-auto pb-24">
-            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-purple-700"><BrainCircuit className="w-8 h-8" />База знаний</h2>
-            <div className="grid gap-4">
-              {KNOWLEDGE_BASE.map((item, idx) => (
-                <div key={idx} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
-                  <div className="flex items-center gap-4 p-4 cursor-pointer bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-50 dark:hover:bg-slate-700/50" onClick={() => setExpandedKnowledge(expandedKnowledge === item.title ? null : item.title)}>
-                    <div className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm">{item.icon}</div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">{item.title}</h3>
-                      <p className="text-xs text-slate-500">{item.description}</p>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold flex items-center gap-2 text-purple-700"><BrainCircuit className="w-8 h-8" />База знаний</h2>
+              <button onClick={() => setShowAddDefectModal(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"><PlusCircle className="w-4 h-4" /> Добавить дефект</button>
+            </div>
+
+            {/* Add Defect Modal */}
+            {showAddDefectModal && (
+              <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-lg animate-fade-in" onClick={(e: any) => { if (e.target === e.currentTarget) setShowAddDefectModal(false); }}>
+                <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl animate-slide-up p-6">
+                  <h3 className="text-lg font-bold mb-4 text-slate-800 dark:text-slate-100">Добавить дефект</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Категория</label>
+                      <select value={newDefectCategory} onChange={(e: any) => setNewDefectCategory(e.target.value)} className="w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg text-sm">
+                        <option value="">Выберите или введите новую...</option>
+                        {[...new Set([...KNOWLEDGE_BASE.map(k => k.title), ...customDefects.map(d => d.categoryTitle)])].map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <input type="text" value={newDefectCategory} onChange={(e: any) => setNewDefectCategory(e.target.value)} placeholder="Или введите новую категорию" className="w-full p-2 mt-1 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg text-sm" />
                     </div>
-                    {expandedKnowledge === item.title ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Проблема</label>
+                      <input type="text" value={newDefectProblem} onChange={(e: any) => setNewDefectProblem(e.target.value)} placeholder="Опишите проблему" className="w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Решение</label>
+                      <textarea value={newDefectSolution} onChange={(e: any) => setNewDefectSolution(e.target.value)} placeholder="Как решить проблему" className="w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 rounded-lg text-sm" rows={3} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={addCustomDefect} className="flex-1 p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium">Сохранить</button>
+                      <button onClick={() => setShowAddDefectModal(false)} className="px-4 p-2 text-slate-500 hover:text-slate-700 text-sm">Отмена</button>
+                    </div>
                   </div>
-                  {expandedKnowledge === item.title && (
-                    <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 space-y-6 animate-fade-in">
-                      {item.issues.map((issue, i) => (
-                        <div key={i} className="flex gap-3">
-                          <div className="mt-1"><AlertCircle className="w-4 h-4 text-red-500" /></div>
-                          <div>
-                            <div className="text-sm font-bold text-red-600 mb-1">{issue.problem}</div>
-                            <div className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">{issue.solution}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              ))}
+              </div>
+            )}
+
+            <div className="grid gap-4">
+              {KNOWLEDGE_BASE.map((item, idx) => {
+                const catDefects = customDefects.filter(d => d.categoryTitle === item.title);
+                return (
+                  <div key={idx} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+                    <div className="flex items-center gap-4 p-4 cursor-pointer bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-50 dark:hover:bg-slate-700/50" onClick={() => setExpandedKnowledge(expandedKnowledge === item.title ? null : item.title)}>
+                      <div className="p-2 bg-white dark:bg-slate-700 rounded-lg shadow-sm">{item.icon}</div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">{item.title}</h3>
+                        <p className="text-xs text-slate-500">{item.description} {catDefects.length > 0 && <span className="text-purple-500 font-bold">+{catDefects.length} своих</span>}</p>
+                      </div>
+                      {expandedKnowledge === item.title ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                    </div>
+                    {expandedKnowledge === item.title && (
+                      <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 space-y-6 animate-fade-in">
+                        {item.issues.map((issue, i) => (
+                          <div key={i} className="flex gap-3">
+                            <div className="mt-1"><AlertCircle className="w-4 h-4 text-red-500" /></div>
+                            <div>
+                              <div className="text-sm font-bold text-red-600 mb-1">{issue.problem}</div>
+                              <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-100 dark:border-slate-600">{issue.solution}</div>
+                            </div>
+                          </div>
+                        ))}
+                        {catDefects.map(defect => (
+                          <div key={defect.id} className="flex gap-3">
+                            <div className="mt-1"><AlertCircle className="w-4 h-4 text-purple-500" /></div>
+                            <div className="flex-1">
+                              <div className="text-sm font-bold text-purple-600 mb-1">{defect.problem} <span className="text-[10px] text-purple-400 font-normal">(свой)</span></div>
+                              <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg border border-purple-100 dark:border-purple-800">{defect.solution}</div>
+                            </div>
+                            <button onClick={() => deleteCustomDefect(defect.id)} className="text-slate-400 hover:text-red-500 mt-1"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Custom categories (not matching any built-in) */}
+              {[...new Set(customDefects.map(d => d.categoryTitle))].filter(cat => !KNOWLEDGE_BASE.some(k => k.title === cat)).map(cat => {
+                const catDefects = customDefects.filter(d => d.categoryTitle === cat);
+                return (
+                  <div key={cat} className="bg-white dark:bg-slate-800 rounded-xl border border-purple-200 dark:border-purple-700 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-4 p-4 cursor-pointer bg-purple-50/50 dark:bg-purple-900/20" onClick={() => setExpandedKnowledge(expandedKnowledge === cat ? null : cat)}>
+                      <div className="p-2 bg-purple-100 dark:bg-purple-900/40 rounded-lg"><PlusCircle className="w-6 h-6 text-purple-500" /></div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">{cat}</h3>
+                        <p className="text-xs text-purple-500">{catDefects.length} записей (свои)</p>
+                      </div>
+                      {expandedKnowledge === cat ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                    </div>
+                    {expandedKnowledge === cat && (
+                      <div className="p-4 border-t border-purple-100 dark:border-purple-800 space-y-6 animate-fade-in">
+                        {catDefects.map(defect => (
+                          <div key={defect.id} className="flex gap-3">
+                            <div className="mt-1"><AlertCircle className="w-4 h-4 text-purple-500" /></div>
+                            <div className="flex-1">
+                              <div className="text-sm font-bold text-purple-600 mb-1">{defect.problem}</div>
+                              <div className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg border border-purple-100 dark:border-purple-800">{defect.solution}</div>
+                            </div>
+                            <button onClick={() => deleteCustomDefect(defect.id)} className="text-slate-400 hover:text-red-500 mt-1"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1914,11 +2239,20 @@ const App: React.FC = () => {
                     {device.partsCost ? (
                       <div className="text-xs text-orange-500">ЗИП: {Number(device.partsCost).toLocaleString('ru-RU')} ₽</div>
                     ) : null}
+                    {device.archivedAt && (
+                      (() => {
+                        const archivedDate = new Date(device.archivedAt);
+                        const now = new Date();
+                        const daysSinceArchived = Math.floor(Math.abs(now.getTime() - archivedDate.getTime()) / (1000 * 60 * 60 * 24));
+                        const daysUntilDelete = Math.max(0, 30 - daysSinceArchived);
+                        return <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1"><Timer className="w-3 h-3" />Удалится через {daysUntilDelete} дн.</div>;
+                      })()
+                    )}
                   </div>
                 </div>
               ))}
               {devices.filter(d => d.isArchived).length === 0 && (
-                <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-500">Архив пуст. Завершённые ремонты появятся здесь автоматически через 4 дня после выдачи.</div>
+                <div className="p-12 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-500">Архив пуст. Завершённые ремонты появятся здесь автоматически через 3 дня после выдачи.</div>
               )}
             </div>
           </div>

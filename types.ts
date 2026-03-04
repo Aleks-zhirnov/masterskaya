@@ -28,6 +28,14 @@ export interface Device {
   isPlanned?: boolean; // План на завтра
   isArchived?: boolean;
   isWarranty?: boolean; // По гарантии
+  archivedAt?: string; // ISO string, дата архивации для автоочистки через 30 дней
+}
+
+export interface PlanTask {
+  id: string;
+  title: string;
+  completed: boolean;
+  createdAt: string; // ISO string
 }
 
 export enum PartType {

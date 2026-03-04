@@ -34,6 +34,7 @@ export default async function handler(req, res) {
           isplanned as "isPlanned",
           isarchived as "isArchived",
           iswarranty as "isWarranty",
+          archivedat as "archivedAt",
           notes
         FROM devices
       `;
@@ -61,10 +62,11 @@ export default async function handler(req, res) {
       const isPlanned = !!body.isPlanned;
       const isArchived = !!body.isArchived;
       const isWarranty = !!body.isWarranty;
+      const archivedAt = sanitize(body.archivedAt || '', 255);
 
       await sql`
-        INSERT INTO devices (id, clientName, clientPhone, deviceModel, issueDescription, dateReceived, status, urgency, estimatedCost, partsCost, notes, statusChangedAt, isPlanned, isArchived, isWarranty)
-        VALUES (${id}, ${clientName}, ${clientPhone}, ${deviceModel}, ${issueDescription}, ${dateReceived}, ${status}, ${safeUrgency}, ${estimatedCost}, ${partsCost}, ${notes}, ${statusChangedAt || null}, ${isPlanned}, ${isArchived}, ${isWarranty})
+        INSERT INTO devices (id, clientName, clientPhone, deviceModel, issueDescription, dateReceived, status, urgency, estimatedCost, partsCost, notes, statusChangedAt, isPlanned, isArchived, isWarranty, archivedAt)
+        VALUES (${id}, ${clientName}, ${clientPhone}, ${deviceModel}, ${issueDescription}, ${dateReceived}, ${status}, ${safeUrgency}, ${estimatedCost}, ${partsCost}, ${notes}, ${statusChangedAt || null}, ${isPlanned}, ${isArchived}, ${isWarranty}, ${archivedAt || null})
         ON CONFLICT (id) DO UPDATE SET
           clientName = ${clientName},
           clientPhone = ${clientPhone},
@@ -79,6 +81,7 @@ export default async function handler(req, res) {
           isPlanned = ${isPlanned},
           isArchived = ${isArchived},
           isWarranty = ${isWarranty},
+          archivedAt = ${archivedAt || null},
           notes = ${notes};
       `;
       return res.status(200).json({ success: true });

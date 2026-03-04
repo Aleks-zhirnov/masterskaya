@@ -18,12 +18,14 @@ export default async function handler(request, response) {
         console.log(`Starting cleanup of archived devices older than ${dateLimit}`);
 
         // Удаляем из базы все устройства, которые в архиве (isArchived = true) 
-        // и были переведены в статус "Archived/Issued" (statusChangedAt) больше месяца назад
+        // и были заархивированы (archivedAt) больше 30 дней назад
         const result = await sql`
       DELETE FROM devices 
       WHERE isArchived = true 
-      AND statusChangedAt IS NOT NULL 
-      AND statusChangedAt < ${dateLimit}
+      AND (
+        (archivedAt IS NOT NULL AND archivedAt < ${dateLimit})
+        OR (archivedAt IS NULL AND statusChangedAt IS NOT NULL AND statusChangedAt < ${dateLimit})
+      )
     `;
 
         return response.status(200).json({
