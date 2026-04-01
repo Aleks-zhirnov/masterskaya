@@ -1576,6 +1576,12 @@ const App: React.FC = () => {
             {Object.values(PartType).map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
+        <div className="w-44">
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Подкатегория</label>
+          <select value={newPartSubtype} onChange={e => setNewPartSubtype(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100">
+            {(RADIO_SUBCATEGORIES[newPartType] || []).map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
         <div className="w-24">
           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Кол-во</label>
           <input type="number" min="1" value={newPartQuantity} onChange={e => setNewPartQuantity(parseInt(e.target.value) || 1)} className="w-full p-2 border border-slate-300 rounded-lg text-sm dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100" />
