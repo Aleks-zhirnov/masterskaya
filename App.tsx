@@ -1171,6 +1171,24 @@ const App: React.FC = () => {
     setNewPartQuantity(1);
   };
 
+  const importPartsFromTable = async () => {
+    if (!confirm('Импортировать 35 компонентов из таблицы на склад?')) return;
+    setIsSyncing(true);
+    try {
+      const result = await api.request('/api/import-parts', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      if (result.success) {
+        // Перезагружаем список запчастей
+        const updatedParts = await api.getParts();
+        setParts(updatedParts);
+        alert(`✅ Импортировано ${result.imported} компонентов!`);
+      }
+    } catch (e: any) {
+      alert('Ошибка импорта: ' + e.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const updatePartQuantity = (id: string, delta: number) => {
     const part = parts.find(p => p.id === id);
     if (!part) return;
@@ -1562,6 +1580,7 @@ const App: React.FC = () => {
         <div className="flex gap-2">
           <button onClick={() => setInventoryTab('stock')} className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${inventoryTab === 'stock' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>Наличие</button>
           <button onClick={() => setInventoryTab('buy')} className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${inventoryTab === 'buy' ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}>Закупки</button>
+          {storageMode === 'cloud' && <button onClick={importPartsFromTable} disabled={isSyncing} className="px-4 py-2 rounded-lg font-medium text-sm transition-colors bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1"><ListPlus className="w-4 h-4" /> Импорт</button>}
         </div>
       </div>
 
